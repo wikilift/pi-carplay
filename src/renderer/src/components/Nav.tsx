@@ -4,8 +4,8 @@ import Tab from '@mui/material/Tab'
 import PhonelinkOffIcon from '@mui/icons-material/PhonelinkOff'
 import PhonelinkIcon from '@mui/icons-material/Phonelink'
 import TuneIcon from '@mui/icons-material/Tune'
-import HelpCenterIcon from '@mui/icons-material/HelpCenter'
-import CameraIcon from '@mui/icons-material/Camera'
+import HelpCenterOutlinedIcon from '@mui/icons-material/HelpCenterOutlined';
+import FilterCenterFocusOutlinedIcon from '@mui/icons-material/FilterCenterFocusOutlined';
 import CloseIcon from '@mui/icons-material/Close'
 import { Link, useLocation } from 'react-router-dom'
 import { useStatusStore } from '../store/store'
@@ -22,18 +22,18 @@ export default function Nav({ receivingVideo }: NavProps) {
   const { pathname } = useLocation()
 
   const isDongleConnected = useStatusStore(s => s.isDongleConnected)
-  const isStreaming       = useStatusStore(s => s.isStreaming)
-  const cameraFound       = useStatusStore(s => s.cameraFound)
+  const isStreaming = useStatusStore(s => s.isStreaming)
+  const cameraFound = useStatusStore(s => s.cameraFound)
 
   if (isStreaming && pathname === '/') {
     return null
   }
 
   const routeToIndex: Record<string, number> = {
-    '/':         0,
+    '/': 0,
     '/settings': 1,
-    '/info':     2,
-    '/camera':   3,
+    '/info': 2,
+    '/camera': 3,
   }
   const value = routeToIndex[pathname] ?? 0
 
@@ -41,16 +41,16 @@ export default function Nav({ receivingVideo }: NavProps) {
   let color: string
 
   if (!isDongleConnected) {
-    icon  = <PhonelinkOffIcon />
+    icon = <PhonelinkOffIcon />
     color = theme.palette.text.disabled
   } else if (!isStreaming) {
-    icon  = <PhonelinkIcon />
+    icon = <PhonelinkIcon />
     color = theme.palette.text.primary
   } else if (receivingVideo) {
-    icon  = <PhonelinkIcon />
+    icon = <PhonelinkIcon />
     color = theme.palette.success.main
   } else {
-    icon  = <PhonelinkIcon />
+    icon = <PhonelinkIcon />
     color = theme.palette.text.primary
   }
 
@@ -72,20 +72,13 @@ export default function Nav({ receivingVideo }: NavProps) {
         to="/"
         sx={{ '& svg': { color } }}
       />
-      <Tab icon={<TuneIcon />}       component={Link} to="/settings" />
-      <Tab icon={<HelpCenterIcon />} component={Link} to="/info" />
+      <Tab icon={<TuneIcon />} component={Link} to="/settings" />
+      <Tab icon={<HelpCenterOutlinedIcon />} component={Link} to="/info" />
       <Tab
-        icon={<CameraIcon />}
+        icon={<FilterCenterFocusOutlinedIcon />}
         component={Link}
         to="/camera"
         disabled={!cameraFound}
-        sx={{
-          '& svg': {
-            color: cameraFound
-              ? theme.palette.common.white
-              : theme.palette.text.disabled
-          }
-        }}
       />
       <Tab icon={<CloseIcon />} onClick={quit} />
     </Tabs>

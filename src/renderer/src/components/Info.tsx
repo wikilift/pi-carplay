@@ -2,17 +2,60 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Typography,
   Box,
-  useTheme,
-  FormLabel,
   Stack,
   Button,
   Dialog,
   DialogTitle,
   DialogContent,
   LinearProgress,
+  Chip,
+  Tooltip,
 } from '@mui/material'
+import { useTheme } from '@mui/material/styles'
 import { useCarplayStore, useStatusStore } from '../store/store'
 import FFTSpectrum from './FFT'
+
+// Abbreviate names
+function abbreviateManufacturer(name?: string, max = 24): string | undefined {
+  if (!name) return name
+  let s = name.trim()
+
+  const repl: Array<[RegExp, string]> = [
+    [/\b(Communications?|Kommunikation(en)?)\b/gi, 'Comm.'],
+    [/\b(Technology|Technologies)\b/gi, 'Tech.'],
+    [/\b(Electronics)\b/gi, 'Elec.'],
+    [/\b(International)\b/gi, 'Intl.'],
+    [/\b(Manufacturing)\b/gi, 'Mfg.'],
+    [/\b(Systems)\b/gi, 'Sys.'],
+    [/\b(Corporation)\b/gi, 'Corp.'],
+    [/\b(Company)\b/gi, 'Co.'],
+    [/\b(Limited)\b/gi, 'Ltd.'],
+    [/\b(Incorporated)\b/gi, 'Inc.'],
+    [/\b(Industries)\b/gi, 'Ind.'],
+    [/\b(Laboratories)\b/gi, 'Labs'],
+    [/\b(Semiconductors?)\b/gi, 'Semi'],
+  ]
+  for (const [re, to] of repl) s = s.replace(re, to)
+  if (s.length <= max) return s
+
+  const parts = s.split(/\s+/).filter(Boolean)
+  if (parts.length > 1) {
+    const first = parts[0]
+    const rest = parts.slice(1).map(p => {
+      const core = p.replace(/[.,]/g, '')
+      const cut = Math.min(4, Math.max(3, Math.ceil(core.length * 0.4)))
+      return core.slice(0, cut) + '.'
+    })
+    s = [first, ...rest].join(' ')
+    if (s.length <= max) return s
+
+    const initials = parts.slice(1).map(p => (p[0] ? p[0].toUpperCase() + '.' : ''))
+    s = [first, ...initials].join(' ')
+    if (s.length <= max) return s
+  }
+
+  return s.slice(0, Math.max(0, max - 1)) + '…'
+}
 
 export default function Info() {
   const theme = useTheme()
@@ -45,19 +88,66 @@ export default function Info() {
   const [total, setTotal] = useState<number>(0)
   const [error, setError] = useState<string>('')
 
-  const highlight = (val: any) =>
-    val != null ? theme.palette.primary.main : theme.palette.text.primary
+  // Grid const 
+  const HW_MIN_COL = 'calc(112px + 20ch)'
 
-  const Row = (label: string, value: any, color?: string) => (
-    <Typography>
-      <Box component="span" sx={{ color: theme.palette.text.secondary, mr: 0.5 }}>
-        {label}:
-      </Box>
-      <Box component="span" sx={{ color: color ?? highlight(value), fontWeight: 400 }}>
-        {value ?? '—'}
-      </Box>
+  // UI helpers
+  const SectionHeader: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <Typography
+      variant="overline"
+      sx={{
+        display: 'block',
+        letterSpacing: 0.8,
+        color: theme.palette.text.secondary,
+        mb: 1.25,
+        '&::after': {
+          content: '""',
+          display: 'block',
+          height: 2,
+          width: 28,
+          mt: 0.5,
+          backgroundColor: theme.palette.primary.main,
+          opacity: 0.6,
+          borderRadius: 1,
+        },
+      }}
+    >
+      {children}
     </Typography>
   )
+
+  type RowOpts = { mono?: boolean; maxCh?: number; color?: string; tooltip?: string }
+  const Row = (label: string, value: any, opts: RowOpts = {}) => {
+    const color =
+      opts.color ??
+      (value != null && value !== '—' ? theme.palette.primary.main : theme.palette.text.primary)
+
+    const isString = typeof value === 'string' || typeof value === 'number'
+    const tooltipTitle = opts.tooltip ?? (isString ? String(value) : '')
+
+    return (
+      <Stack direction="row" spacing={1} alignItems="baseline">
+        <Typography sx={{ minWidth: 112, color: theme.palette.text.secondary }}>{label}:</Typography>
+        <Tooltip title={tooltipTitle} disableInteractive>
+          <Typography
+            sx={{
+              color,
+              fontVariantNumeric: 'tabular-nums',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              maxWidth: `${opts.maxCh ?? 26}ch`,
+              fontFamily: opts.mono
+                ? 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace'
+                : undefined,
+            }}
+          >
+            {value ?? '—'}
+          </Typography>
+        </Tooltip>
+      </Stack>
+    )
+  }
 
   const parseSemver = (v?: string): number[] | null => {
     if (!v) return null
@@ -83,8 +173,7 @@ export default function Info() {
 
   const actionLabel =
     !hasLatest ? 'CHECK' : cmp! < 0 ? 'UPDATE' : cmp! > 0 ? 'DOWNGRADE' : 'UP TO DATE'
-  const actionEnabled =
-    !hasLatest ? true : cmp! !== null && cmp! !== 0 // enable only if different when we have latest
+  const actionEnabled = !hasLatest ? true : cmp! !== null && cmp! !== 0
 
   const recheckLatest = async () => {
     try {
@@ -180,6 +269,13 @@ export default function Info() {
       ? 'Error'
       : 'Working…'
 
+  const isUpToDate = hasLatest && cmp === 0
+
+  const displayManufacturer = useMemo(
+    () => abbreviateManufacturer(manufacturer ?? undefined, 24),
+    [manufacturer]
+  )
+
   return (
     <Box
       className={theme.palette.mode === 'dark' ? 'App-header-dark' : 'App-header-light'}
@@ -188,62 +284,120 @@ export default function Info() {
       flexDirection="column"
       height="100vh"
     >
-      <Box sx={{ overflowY: 'auto', overflowX: 'hidden', flexGrow: 1, pt: 2, pb: 1, px: 1.5 }}>
-        <Box display="flex" flexWrap="wrap" columnGap={2} rowGap={2} sx={{ px: 1 }}>
+      <Box
+        sx={{
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          flexGrow: 1,
+          px: 1.5,
+          py: 1.5,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2,
+        }}
+      >
+        {/* Section A: 3-column grid */}
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: {
+              xs: '1fr',
+              sm: `minmax(${HW_MIN_COL}, 1.4fr) minmax(0,1fr) minmax(0,1fr)`,
+            },
+            columnGap: 2,
+            rowGap: 2,
+            px: 1,
+          }}
+        >
           {/* Col 1: Hardware */}
-          <Box sx={{ flex: '1 1 32%', minWidth: 220 }}>
-            <FormLabel sx={{ mb: 1 }}>HARDWARE INFO</FormLabel>
+          <Box sx={{ minWidth: 0 }}>
+            <SectionHeader>HARDWARE INFO</SectionHeader>
             <Stack spacing={0.5} sx={{ pl: 1.5 }}>
-              {Row('Serial', serial)}
-              {Row('Manufacturer', manufacturer)}
-              {Row('Product', product)}
-              {Row('Firmware', fwVersion)}
+              {Row('Serial', serial, { mono: true, maxCh: 28 })}
+              {Row('Manufacturer', displayManufacturer, { maxCh: 28, tooltip: manufacturer || undefined })}
+              {Row('Product', product, { maxCh: 28 })}
+              {Row('Firmware', fwVersion, { mono: true, maxCh: 18 })}
             </Stack>
           </Box>
 
           {/* Col 2: Phone + Video */}
-          <Box sx={{ flex: '1 1 32%', minWidth: 220 }}>
-            <FormLabel sx={{ mb: 1 }}>PHONE</FormLabel>
+          <Box
+            sx={{
+              minWidth: 0,
+              pl: { md: 2 },
+              borderLeft: { md: `1px solid ${theme.palette.divider}` },
+            }}
+          >
+            <SectionHeader>PHONE</SectionHeader>
             <Stack spacing={0.5} sx={{ pl: 1.5, mb: 2 }}>
-              {Row('Connected', isStreaming ? 'Yes' : 'No', isStreaming ? theme.palette.success.main : undefined)}
+              {Row(
+                'Connected',
+                <Chip
+                  label={isStreaming ? 'Yes' : 'No'}
+                  size="small"
+                  variant="outlined"
+                  color={isStreaming ? 'success' : 'default'}
+                  sx={{ height: 20 }}
+                />,
+                { maxCh: 20 }
+              )}
             </Stack>
 
-            <FormLabel sx={{ mb: 1 }}>VIDEO INFO</FormLabel>
+            <SectionHeader>VIDEO INFO</SectionHeader>
             <Stack spacing={0.5} sx={{ pl: 1.5 }}>
               {Row(
                 'Resolution',
-                negotiatedWidth && negotiatedHeight ? `${negotiatedWidth}×${negotiatedHeight}` : '—'
+                negotiatedWidth && negotiatedHeight ? `${negotiatedWidth}×${negotiatedHeight}` : '—',
+                { mono: true, maxCh: 18 }
               )}
             </Stack>
           </Box>
 
           {/* Col 3: Software */}
-          <Box sx={{ flex: '1 1 22%', minWidth: 200 }}>
-            <FormLabel sx={{ mb: 1 }}>SOFTWARE</FormLabel>
+          <Box
+            sx={{
+              minWidth: 0,
+              pl: { md: 2 },
+              borderLeft: { md: `1px solid ${theme.palette.divider}` },
+            }}
+          >
+            <SectionHeader>SOFTWARE</SectionHeader>
             <Stack spacing={1} sx={{ pl: 1.5 }}>
-              {Row('Installed', installedVersion)}
-              {Row('Available', latestVersion)}
-              <Button
-                size="small"
-                variant="outlined"
-                disabled={!actionEnabled}
-                onClick={onPrimaryAction}
-                sx={{ alignSelf: 'flex-start' }}
-              >
-                {actionLabel}
-              </Button>
+              {Row('Installed', installedVersion, { mono: true, maxCh: 10 })}
+              {Row('Available', latestVersion, { mono: true, maxCh: 10 })}
+              {isUpToDate ? (
+                <Chip label="UP TO DATE" size="small" variant="outlined" sx={{ opacity: 0.75 }} />
+              ) : (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={!actionEnabled}
+                  onClick={onPrimaryAction}
+                  sx={{ alignSelf: 'flex-start' }}
+                >
+                  {actionLabel}
+                </Button>
+              )}
             </Stack>
           </Box>
+        </Box>
 
-          {/* Audio + FFT */}
-          <Box sx={{ flex: '1 1 100%', display: 'flex', flexWrap: 'nowrap', gap: 2 }}>
+        {/* Section B: Audio + FFT */}
+        <Box sx={{ px: 1 }}>
+          <Box sx={{ display: 'flex', flexWrap: 'nowrap', gap: 1.5 }}>
             <Box sx={{ flex: '1 1 40%', minWidth: 240, alignSelf: 'center' }}>
-              <FormLabel sx={{ mb: 1 }}>AUDIO INFO</FormLabel>
+              <SectionHeader>AUDIO INFO</SectionHeader>
               <Stack spacing={0.5} sx={{ pl: 1.5 }}>
-                {Row('Codec', audioCodec)}
-                {Row('Samplerate', audioSampleRate ? `${audioSampleRate} Hz` : '—')}
-                {Row('Channels', audioChannels)}
-                {Row('Bit depth', audioBitDepth ? `${audioBitDepth} bit` : '—')}
+                {Row('Codec', audioCodec, { maxCh: 24 })}
+                {Row('Samplerate', audioSampleRate ? `${audioSampleRate} Hz` : '—', {
+                  mono: true,
+                  maxCh: 24,
+                })}
+                {Row('Channels', audioChannels, { mono: true, maxCh: 8 })}
+                {Row('Bit depth', audioBitDepth ? `${audioBitDepth} bit` : '—', {
+                  mono: true,
+                  maxCh: 12,
+                })}
               </Stack>
             </Box>
 
@@ -251,10 +405,11 @@ export default function Info() {
               sx={{
                 flex: '1 1 60%',
                 minWidth: 240,
-                height: { xs: 150, sm: 200, md: 250 },
+                height: 'clamp(180px, 30vh, 440px)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                mt: 0.5,
               }}
             >
               <FFTSpectrum data={pcmData} />

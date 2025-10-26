@@ -3,8 +3,6 @@ import React, { useEffect, useMemo, useState } from "react"
 import {
   Box,
   FormControlLabel,
-  Radio,
-  RadioGroup,
   TextField,
   Checkbox,
   FormControl,
@@ -19,8 +17,10 @@ import {
   Slider,
   CircularProgress,
   Typography,
+  MenuItem,
 } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
+import type { SxProps, Theme } from '@mui/material/styles'
 import { TransitionProps } from '@mui/material/transitions'
 import { KeyBindings } from "./KeyBindings"
 import { useCarplayStore, useStatusStore } from "../store/store"
@@ -38,6 +38,34 @@ const Transition = React.forwardRef(function Transition(
   return <Slide direction="up" ref={ref} {...props} />
 })
 
+const SectionHeader: React.FC<{ children: React.ReactNode; sx?: SxProps<Theme> }> = ({ children, sx }) => {
+  const theme = useTheme()
+  return (
+    <Typography
+      variant="overline"
+      sx={{
+        display: 'block',
+        letterSpacing: 0.8,
+        color: theme.palette.text.secondary,
+        mb: 1.25,
+        '&::after': {
+          content: '""',
+          display: 'block',
+          height: 2,
+          width: 28,
+          mt: 0.5,
+          backgroundColor: theme.palette.primary.main,
+          opacity: 0.6,
+          borderRadius: 1,
+        },
+        ...sx,
+      }}
+    >
+      {children}
+    </Typography>
+  )
+}
+
 const Settings: React.FC<SettingsProps> = ({ settings }) => {
   if (!settings) return null
 
@@ -53,6 +81,7 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
   const [resetMessage, setResetMessage] = useState("")
   const [closeCountdown, setCloseCountdown] = useState(0)
   const [hasChanges, setHasChanges] = useState(false)
+  const [openAdvanced, setOpenAdvanced] = useState(false)
 
   const saveSettings = useCarplayStore(s => s.saveSettings)
   const isDongleConnected = useStatusStore(s => s.isDongleConnected)
@@ -139,9 +168,9 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
     const updateMic = async () => {
       try {
         const label = await window.carplay.usb.getSysdefaultPrettyName()
-        const final = label && !['sysdefault', 'null'].includes(label) ? label : 'no device available'
+        const final = label && !['sysdefault', 'null'].includes(label) ? label : 'no device'
         setMicLabel(final)
-        if (!activeSettings.microphone && final !== 'no device available') {
+        if (!activeSettings.microphone && final !== 'no device') {
           const upd = { ...activeSettings, microphone: 'sysdefault' }
           setActiveSettings(upd)
           debouncedSave(upd)
@@ -181,116 +210,229 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
     </Grid>
   )
 
-  const renderSliderField = (label: string, key: keyof ExtraConfig) => (
-    <Grid size={{ xs: 6 }} key={String(key)}>
-      <FormControl fullWidth sx={{ px: 2 }}>
-        <FormLabel>{label}</FormLabel>
-        <Slider
-          value={Math.round((activeSettings[key] as number) * 100)}
-          min={0} max={100} step={5} marks valueLabelDisplay="auto"
-          onChange={(_, v) => typeof v === 'number' && settingsChange(key, v / 100)}
-        />
-      </FormControl>
-    </Grid>
-  )
-
-  const renderCameras = () => (
-    <Grid size={{ xs: 'auto' }} sx={{ minWidth: 0, maxWidth: '100%' }}>
-      <FormControl fullWidth>
-        <FormLabel>CAMERA</FormLabel>
-        <RadioGroup
-          value={activeSettings.camera}
-          onChange={e => settingsChange('camera', e.target.value)}
-        >
-          <Stack direction="column" sx={{ maxHeight: 220, overflowY: 'auto' }}>
-            {cameras.map(cam => (
-              <FormControlLabel
-                key={cam.deviceId}
-                value={cam.deviceId}
-                control={<Radio />}
-                label={cam.label || 'Camera'}
-              />
-            ))}
-          </Stack>
-        </RadioGroup>
-      </FormControl>
-    </Grid>
-  )
-
   const handleClosePopup = () => {
     setResetMessage("")
     setCloseCountdown(0)
   }
 
   return (
-    <Box className={theme.palette.mode === 'dark' ? 'App-header-dark' : 'App-header-light'} p={2} display="flex" flexDirection="column" height="100vh">
-      <Box sx={{ overflowY: 'auto', overflowX: 'hidden', flexGrow: 1, pt: 2, pb: 1, px: 1.5 }}>
+    <Box
+      className={theme.palette.mode === 'dark' ? 'App-header-dark' : 'App-header-light'}
+      p={2}
+      display="flex"
+      flexDirection="column"
+      height="100vh"
+    >
+      {/* Content */}
+      <Box
+        sx={{
+          overflowY: 'hidden',
+          overflowX: 'hidden',
+          flexGrow: 1,
+          px: 1.5,
+          py: 1.5,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2,
+        }}
+      >
+        {/* Top row: left = Video, right = Audio */}
         <Grid container spacing={2} sx={{ px: 1 }}>
-          {renderField('WIDTH', 'width', 800)}
-          {renderField('HEIGHT', 'height', 480)}
-          {renderField('FPS', 'fps', 60)}
-          {renderField('DPI', 'dpi')}
-          {renderField('FORMAT', 'format')}
-          {renderField('IBOX VERSION', 'iBoxVersion')}
-          {renderField('MEDIA DELAY', 'mediaDelay')}
-          {renderField('PHONE WORK MODE', 'phoneWorkMode')}
-          {renderSliderField('AUDIO VOLUME', 'audioVolume')}
-          {renderSliderField('NAV VOLUME', 'navVolume')}
+          {/* VIDEO SETTINGS */}
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <SectionHeader sx={{ mb: 2.25 }}>VIDEO SETTINGS</SectionHeader>
+
+            <Box sx={{ pl: 1.5 }}>
+              {/* Row 1: WIDTH × HEIGHT */}
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: '136px 24px 136px',
+                  alignItems: 'center',
+                  gap: 2,
+                  width: 'fit-content',
+                }}
+              >
+                <TextField
+                  size="small"
+                  label="WIDTH"
+                  type="number"
+                  value={activeSettings.width}
+                  onChange={e => settingsChange('width', Number(e.target.value))}
+                  sx={{ width: 136 }}
+                />
+                <Typography sx={{ textAlign: 'center', fontSize: 22, lineHeight: 1 }}>×</Typography>
+                <TextField
+                  size="small"
+                  label="HEIGHT"
+                  type="number"
+                  value={activeSettings.height}
+                  onChange={e => settingsChange('height', Number(e.target.value))}
+                  sx={{ width: 136 }}
+                />
+              </Box>
+
+              {/* Row 2: FPS | MEDIA DELAY */}
+              <Box
+                sx={{
+                  mt: 1.75,
+                  display: 'grid',
+                  gridTemplateColumns: '136px 24px 136px',
+                  alignItems: 'center',
+                  gap: 2,
+                  width: 'fit-content',
+                }}
+              >
+                <TextField
+                  size="small"
+                  label="FPS"
+                  type="number"
+                  value={activeSettings.fps}
+                  onChange={e => settingsChange('fps', Number(e.target.value))}
+                  sx={{ width: 136 }}
+                />
+                <Box sx={{ width: 24, height: 1 }} />
+                <TextField
+                  size="small"
+                  label="MEDIA DELAY"
+                  type="number"
+                  value={activeSettings.mediaDelay}
+                  onChange={e => settingsChange('mediaDelay', Number(e.target.value))}
+                  sx={{ width: 136 }}
+                />
+              </Box>
+            </Box>
+          </Grid>
+
+          {/* AUDIO SETTINGS */}
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <SectionHeader>AUDIO SETTINGS</SectionHeader>
+
+            <Stack spacing={1.5} sx={{ pl: 1.5, maxWidth: 360 }}>
+              <FormControl fullWidth>
+                <FormLabel sx={{ typography: 'body2' }}>AUDIO VOLUME</FormLabel>
+                <Slider
+                  size="small"
+                  value={Math.round((activeSettings.audioVolume ?? 1.0) * 100)}
+                  min={0}
+                  max={100}
+                  step={5}
+                  marks
+                  valueLabelDisplay="auto"
+                  onChange={(_, v) => typeof v === 'number' && settingsChange('audioVolume', v / 100)}
+                />
+              </FormControl>
+
+              <FormControl fullWidth>
+                <FormLabel sx={{ typography: 'body2' }}>NAV VOLUME</FormLabel>
+                <Slider
+                  size="small"
+                  value={Math.round((activeSettings.navVolume ?? 1.0) * 100)}
+                  min={0}
+                  max={100}
+                  step={5}
+                  marks
+                  valueLabelDisplay="auto"
+                  onChange={(_, v) => typeof v === 'number' && settingsChange('navVolume', v / 100)}
+                />
+              </FormControl>
+            </Stack>
+          </Grid>
         </Grid>
 
-        {/* Panels row with equal, responsive gaps */}
+        {/* Bottom row: Options + three selects */}
         <Grid
           container
-          wrap="nowrap"
-          alignItems="flex-start"
-          justifyContent="space-between"
-          sx={{ px: 1, mt: 1, gap: 0 }}
+          spacing={2}
+          sx={{ px: 1 }}
+          columns={12}
+          alignItems="center"
         >
-          <Grid size={{ xs: 'auto' }}>
-            <FormControl>
-              <FormLabel>OPTIONS</FormLabel>
-              <Stack direction="column" spacing={0.5}>
-                <FormControlLabel control={<Checkbox checked={activeSettings.kiosk} onChange={e => settingsChange('kiosk', e.target.checked)} />} label="KIOSK" />
-                <FormControlLabel control={<Checkbox checked={activeSettings.nightMode} onChange={e => settingsChange('nightMode', e.target.checked)} />} label="DARK MODE" />
-                <FormControlLabel control={<Checkbox checked={activeSettings.audioTransferMode} onChange={e => settingsChange('audioTransferMode', e.target.checked)} />} label="DISABLE AUDIO" />
-              </Stack>
-            </FormControl>
+          <Grid size={{ xs: 6, sm: 3 }}>
+            <Stack spacing={0.5}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    size="small"
+                    checked={activeSettings.kiosk}
+                    onChange={e => settingsChange('kiosk', e.target.checked)}
+                  />
+                }
+                label="KIOSK"
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    size="small"
+                    checked={activeSettings.nightMode}
+                    onChange={e => settingsChange('nightMode', e.target.checked)}
+                  />
+                }
+                label="DARK MODE"
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    size="small"
+                    checked={activeSettings.audioTransferMode}
+                    onChange={e => settingsChange('audioTransferMode', e.target.checked)}
+                  />
+                }
+                label="DISABLE AUDIO"
+              />
+            </Stack>
           </Grid>
 
-          <Grid size={{ xs: 'auto' }}>
-            <FormControl>
-              <FormLabel>WIFI</FormLabel>
-              <RadioGroup
-                value={activeSettings.wifiType}
-                onChange={e => settingsChange('wifiType', e.target.value)}
-              >
-                <Stack direction="column">
-                  <FormControlLabel value="2.4ghz" control={<Radio />} label="2.4G" />
-                  <FormControlLabel value="5ghz" control={<Radio />} label="5G" />
-                </Stack>
-              </RadioGroup>
-            </FormControl>
+          <Grid size={{ xs: 6, sm: 3 }} sx={{ display: 'flex', alignItems: 'center' }}>
+            <TextField
+              size="small"
+              select
+              fullWidth
+              label="WIFI"
+              value={activeSettings.wifiType}
+              onChange={e => settingsChange('wifiType', e.target.value)}
+            >
+              <MenuItem value="2.4ghz">2.4 GHz</MenuItem>
+              <MenuItem value="5ghz">5 GHz</MenuItem>
+            </TextField>
           </Grid>
 
-          <Grid size={{ xs: 'auto' }} sx={{ minWidth: 0, maxWidth: '100%' }}>
-            <FormControl fullWidth>
-              <FormLabel>MICROPHONE</FormLabel>
-              <RadioGroup
-                value={activeSettings.micType}
-                onChange={e => settingsChange('micType', e.target.value)}
-              >
-                <Stack direction="column">
-                  <FormControlLabel value="os" control={<Radio />} label={<Typography noWrap>OS: {micLabel}</Typography>} />
-                  <FormControlLabel value="box" control={<Radio />} label="BOX" />
-                </Stack>
-              </RadioGroup>
-            </FormControl>
+          <Grid size={{ xs: 6, sm: 3 }} sx={{ display: 'flex', alignItems: 'center' }}>
+            <TextField
+              size="small"
+              select
+              fullWidth
+              label="MICROPHONE"
+              value={activeSettings.micType}
+              onChange={e => settingsChange('micType', e.target.value)}
+            >
+              <MenuItem value="os">
+                <Typography noWrap component="span">OS: {micLabel}</Typography>
+              </MenuItem>
+              <MenuItem value="box">BOX</MenuItem>
+            </TextField>
           </Grid>
 
-          {cameras.length > 0 && renderCameras()}
+          <Grid size={{ xs: 6, sm: 3 }} sx={{ display: 'flex', alignItems: 'center' }}>
+            <TextField
+              size="small"
+              select
+              fullWidth
+              label="CAMERA"
+              value={activeSettings.camera ?? ''}
+              onChange={e => settingsChange('camera', e.target.value)}
+            >
+              {(cameras.length ? cameras : [{ deviceId: '', label: 'No camera' }]).map((cam: any) => (
+                <MenuItem key={cam.deviceId ?? 'none'} value={cam.deviceId ?? ''}>
+                  {cam.label || 'Camera'}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Grid>
         </Grid>
       </Box>
 
+      {/* Centered action buttons */}
       <Box
         position="sticky"
         bottom={0}
@@ -299,23 +441,29 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
         justifyContent="center"
         sx={{ pt: 1, pb: 1 }}
       >
-        <Box
-          sx={{
-            backgroundColor: theme.palette.background.default,
-            px: 2,
-            py: 1,
-            borderRadius: 2,
-            boxShadow: theme.shadows[2],
-            display: 'flex',
-            gap: 2,
-          }}
-        >
-          <Button variant="contained" color={hasChanges ? 'primary' : 'inherit'} onClick={hasChanges ? handleSave : undefined} disabled={!hasChanges || isResetting}>SAVE</Button>
-          <Button variant="outlined" onClick={() => setOpenBindings(true)}>BINDINGS</Button>
+        <Box sx={{ display: 'flex', gap: 1.5 }}>
+          <Button variant="outlined" onClick={() => setOpenAdvanced(true)}>
+            ADVANCED
+          </Button>
+          <Button variant="outlined" onClick={() => setOpenBindings(true)}>
+            BINDINGS
+          </Button>
+          <Button
+            variant="contained"
+            color={hasChanges ? 'primary' : 'inherit'}
+            onClick={hasChanges ? handleSave : undefined}
+            disabled={!hasChanges || isResetting}
+          >
+            SAVE
+          </Button>
         </Box>
       </Box>
 
-      {isResetting && <Box display="flex" justifyContent="center" sx={{ mt: 2 }}><CircularProgress /></Box>}
+      {isResetting && (
+        <Box display="flex" justifyContent="center" sx={{ mt: 1.5 }}>
+          <CircularProgress />
+        </Box>
+      )}
 
       <Dialog open={!!resetMessage} onClose={handleClosePopup}>
         <DialogTitle>Reset Status</DialogTitle>
@@ -341,8 +489,29 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
           <KeyBindings settings={activeSettings} updateKey={settingsChange} />
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={openAdvanced}
+        TransitionComponent={Transition}
+        keepMounted
+        onClose={() => setOpenAdvanced(false)}
+        PaperProps={{ sx: { minWidth: 520 } }}
+      >
+        <DialogTitle>Advanced Settings</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 0.5 }}>
+            {renderField('DPI', 'dpi')}
+            {renderField('FORMAT', 'format')}
+            {renderField('IBOX VERSION', 'iBoxVersion')}
+            {renderField('PHONE WORK MODE', 'phoneWorkMode')}
+          </Grid>
+          <Typography variant="body2" sx={{ mt: 2 }} color="text.secondary">
+            Changes here may require a restart.
+          </Typography>
+        </DialogContent>
+      </Dialog>
     </Box>
   )
 }
 
-export default Settings;
+export default Settings
