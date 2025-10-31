@@ -11,8 +11,8 @@ export const themeColors = {
   textSecondaryDark: '#bbbbbb',
 
   // Highlight (primary) colors
-  highlightLight: '#fa1900',
-  highlightDark: '#61dafb',
+  highlightLight: '#ff0000',
+  highlightDark: '#00ffff',
 
   // Higlight active carplay stream
   successLight: '#81c784',

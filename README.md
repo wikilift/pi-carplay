@@ -42,10 +42,10 @@ The `setup-pi.sh` script performs the following tasks:
 <p align="center">
   <img src="documentation/images/carplay_no_phone.png" alt="No Phone" width="48%" align="top" />
   &emsp;
-  <img src="documentation/images/info.png" alt="Info" width="48%" align="top" />
+  <img src="documentation/images/media.png" alt="Media" width="48%" align="top" />
 </p>
 <p align="center">
-  <img src="documentation/images/media.png" alt="Media" width="48%" align="top" />
+  <img src="documentation/images/info.png" alt="Info" width="48%" align="top" />
   &emsp;
   <img src="documentation/images/settings.png" alt="Settings" width="48%" align="top" />
 </p>

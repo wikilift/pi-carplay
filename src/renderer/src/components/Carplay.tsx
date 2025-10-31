@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Typography } from '@mui/material'
+import React, { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from 'react'
+import { Box, Typography, useTheme, alpha } from '@mui/material'
+import { keyframes } from '@mui/system'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { CommandMapping } from '../../../main/carplay/messages/common'
 
@@ -9,6 +10,11 @@ import { InitEvent, Renderer } from './worker/render/RenderEvents'
 import useCarplayAudio from './useCarplayAudio'
 import { useCarplayMultiTouch } from './useCarplayTouch'
 import type { CarPlayWorker, KeyCommand } from './worker/types'
+
+// Icons
+import UsbOffOutlinedIcon from '@mui/icons-material/UsbOffOutlined'
+import UsbOutlinedIcon from '@mui/icons-material/UsbOutlined'
+import PhoneIphoneOutlinedIcon from '@mui/icons-material/PhoneIphoneOutlined'
 
 const RETRY_DELAY_MS = 3000
 
@@ -20,6 +26,162 @@ interface CarplayProps {
   commandCounter: number
 }
 
+/* ----------------------------- Overlay visuals ----------------------------- */
+
+const spin = keyframes`to { transform: rotate(360deg); }`
+const pulse = keyframes`
+  0%   { transform: scale(1);   opacity: .35; }
+  50%  { transform: scale(1.08); opacity: .7; }
+  100% { transform: scale(1);   opacity: .35; }
+`
+
+function StatusOverlay({
+  mode,
+  show,
+  offsetY = 0
+}: {
+  mode: 'dongle' | 'phone'
+  show: boolean
+  offsetY?: number
+}) {
+  const theme = useTheme()
+  const isPhonePhase = mode === 'phone'
+  const ringColor = isPhonePhase ? theme.palette.primary.main : theme.palette.text.secondary
+  const track = alpha(ringColor, 0.22)
+
+  // Measure ring size
+  const ringRef = useRef<HTMLDivElement>(null)
+  const [ringH, setRingH] = useState(0)
+  useLayoutEffect(() => {
+    const measure = () => {
+      const h = ringRef.current?.getBoundingClientRect().height ?? 0
+      if (h && h !== ringH) setRingH(h)
+    }
+    measure()
+    const ro = ringRef.current ? new ResizeObserver(measure) : null
+    if (ringRef.current) ro?.observe(ringRef.current)
+    window.addEventListener('resize', measure)
+    return () => {
+      window.removeEventListener('resize', measure)
+      ro?.disconnect()
+    }
+  }, [ringH])
+
+  const GAP_BELOW = 12
+
+  const Chip = (active: boolean, Icon: React.ElementType, label: string, muted?: boolean) => (
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 0.75,
+        px: 1.25,
+        py: 0.5,
+        borderRadius: 999,
+        backdropFilter: 'blur(6px)',
+        backgroundColor: alpha(
+          theme.palette.background.paper,
+          theme.palette.mode === 'dark' ? 0.28 : 0.18
+        ),
+        color: active
+          ? theme.palette.primary.main
+          : muted
+            ? theme.palette.text.disabled
+            : theme.palette.text.secondary,
+        fontSize: 12,
+        lineHeight: 1,
+        border: `1px solid ${alpha(theme.palette.divider, 0.5)}`
+      }}
+    >
+      <Icon sx={{ fontSize: 18 }} />
+      <Typography variant="caption" sx={{ fontWeight: 500 }}>
+        {label}
+      </Typography>
+    </Box>
+  )
+
+  return (
+    <Box
+      role="status"
+      aria-live="polite"
+      aria-hidden={!show}
+      sx={{
+        position: 'absolute',
+        inset: 0,
+        pointerEvents: 'none',
+        display: show ? 'block' : 'none'
+      }}
+    >
+      {/* Ring center pinned to window center */}
+      <Box
+        ref={ringRef}
+        sx={{
+          position: 'absolute',
+          left: '50%',
+          top: `calc(50% + ${offsetY}px)`,
+          transform: 'translate(-50%, -50%)',
+          width: { xs: 72, sm: 88 },
+          height: { xs: 72, sm: 88 }
+        }}
+      >
+        {/* Track */}
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: '50%',
+            border: '6px solid',
+            borderColor: track
+          }}
+        />
+        {/* Spinning arc */}
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: '50%',
+            border: '6px solid',
+            borderColor: 'transparent',
+            borderTopColor: ringColor,
+            animation: `${spin} 900ms linear infinite`
+          }}
+        />
+        {/* Soft pulse */}
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 10,
+            borderRadius: '50%',
+            background: alpha(ringColor, 0.15),
+            animation: `${pulse} 1400ms ease-in-out infinite`
+          }}
+        />
+      </Box>
+
+      {/* Chips */}
+      <Box
+        sx={{
+          position: 'absolute',
+          left: '50%',
+          top: `calc(50% + ${offsetY}px + ${(ringH || 0) / 2 + GAP_BELOW}px)`,
+          transform: 'translateX(-50%)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5
+        }}
+      >
+        {isPhonePhase
+          ? Chip(true, UsbOutlinedIcon, 'Dongle')
+          : Chip(false, UsbOffOutlinedIcon, 'Dongle')}
+        <Box sx={{ width: 18, height: 2, bgcolor: alpha(ringColor, 0.25), borderRadius: 1 }} />
+        {Chip(false, PhoneIphoneOutlinedIcon, 'Phone', !isPhonePhase)}
+      </Box>
+    </Box>
+  )
+}
+
+/* --------------------------------- Carplay -------------------------------- */
+
 const Carplay: React.FC<CarplayProps> = ({
   receivingVideo,
   setReceivingVideo,
@@ -30,8 +192,9 @@ const Carplay: React.FC<CarplayProps> = ({
   const navigate = useNavigate()
   const location = useLocation()
   const pathname = location.pathname
+  const theme = useTheme()
 
-  // Zustand Store
+  // Zustand store
   const isStreaming = useStatusStore((s) => s.isStreaming)
   const setStreaming = useStatusStore((s) => s.setStreaming)
   const setDongleConnected = useStatusStore((s) => s.setDongleConnected)
@@ -54,31 +217,51 @@ const Carplay: React.FC<CarplayProps> = ({
   const hasStartedRef = useRef(false)
   const [renderReady, setRenderReady] = useState(false)
 
-  // MediaPlayStatus Handling
+  // Overlay offset
+  const [overlayY, setOverlayY] = useState(0)
+  useLayoutEffect(() => {
+    const recalc = () => {
+      const r = mainElem.current?.getBoundingClientRect()
+      if (!r) return
+      const contentCenterY = r.top + r.height / 2
+      const windowCenterY = window.innerHeight / 2
+      setOverlayY(windowCenterY - contentCenterY)
+    }
+    recalc()
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(recalc) : null
+    if (ro && mainElem.current) ro.observe(mainElem.current)
+    window.addEventListener('resize', recalc)
+    return () => {
+      window.removeEventListener('resize', recalc)
+      ro?.disconnect()
+    }
+  }, [])
+
+  // MediaPlayStatus handling
   const mediaPlayStatusRef = useRef<number | undefined>(undefined)
   const audioCommandRef = useRef<number | undefined>(undefined)
 
-  // RenderWorker + OffscreenCanvas per Ref
+  // Render worker + OffscreenCanvas
   const renderWorkerRef = useRef<Worker | null>(null)
   const offscreenCanvasRef = useRef<OffscreenCanvas | null>(null)
 
   // Render settings
-  const preferredRenderer = 'auto' //  'auto' | 'webgl2' | 'webgl' | 'webgpu'
+  const preferredRenderer = 'auto' // 'auto' | 'webgl2' | 'webgl' | 'webgpu'
   const reportFps = false
   const useHardware = true
   const useWebRTC = true
 
-  // Get Settings
+  // Keep settings in ref
   const configRef = useRef(settings)
   useEffect(() => {
     configRef.current = settings
   }, [settings])
 
-  // CHANNELS
+  // Channels
   const videoChannel = useMemo(() => new MessageChannel(), [])
   const micChannel = useMemo(() => new MessageChannel(), [])
 
-  // CarPlay Worker Setup
+  // CarPlay worker setup
   const carplayWorker = useMemo<CarPlayWorker>(() => {
     const w = new Worker(new URL('./worker/CarPlay.worker.ts', import.meta.url), {
       type: 'module'
@@ -104,7 +287,7 @@ const Carplay: React.FC<CarplayProps> = ({
     return w
   }, [micChannel])
 
-  // Render Worker Setup
+  // Render worker setup
   useEffect(() => {
     if (canvasRef.current && !offscreenCanvasRef.current && !renderWorkerRef.current) {
       offscreenCanvasRef.current = canvasRef.current.transferControlToOffscreen()
@@ -144,22 +327,19 @@ const Carplay: React.FC<CarplayProps> = ({
     return () => renderWorkerRef.current?.removeEventListener('message', handler)
   }, [])
 
-  // Preload-Chunks fwd to Worker-Port
+  // Forward video chunks to worker port
   useEffect(() => {
     const handleVideo = (packet: any) => {
       if (!renderReady) return
-
       const { chunk } = packet
       const transfer = chunk.buffer
-
       videoChannel.port1.postMessage(transfer, [transfer])
     }
-
     window.carplay.ipc.onVideoChunk(handleVideo)
-
-    return () => { }
+    return () => {}
   }, [videoChannel, renderReady])
 
+  // Forward audio chunks to mic channel
   useEffect(() => {
     const handleAudio = (chunk: any) => {
       if (chunk && chunk.chunk && chunk.chunk.buffer) {
@@ -173,15 +353,13 @@ const Carplay: React.FC<CarplayProps> = ({
         )
       }
     }
-
     window.carplay.ipc.onAudioChunk(handleAudio)
-
-    return () => { }
+    return () => {}
   }, [micChannel])
 
-  // Start CarPlay-Service
+  // Start CarPlay service on mount
   useEffect(() => {
-    ; (async () => {
+    ;(async () => {
       try {
         await window.carplay.ipc.start()
       } catch (err) {
@@ -190,10 +368,8 @@ const Carplay: React.FC<CarplayProps> = ({
     })()
   }, [])
 
-  // Audio- and Touch-Hooks
+  // Audio + touch hooks
   const { processAudio, getAudioPlayer } = useCarplayAudio(carplayWorker)
-
-  // Touch-Listener
   const touchHandlers = useCarplayMultiTouch()
 
   const clearRetryTimeout = useCallback(() => {
@@ -209,7 +385,7 @@ const Carplay: React.FC<CarplayProps> = ({
     }
   }, [location.pathname, navigate])
 
-  // Carplay Worker messages
+  // CarPlay worker messages
   useEffect(() => {
     if (!carplayWorker) return
     const handler = (ev: MessageEvent<any>) => {
@@ -283,7 +459,7 @@ const Carplay: React.FC<CarplayProps> = ({
     setReceivingVideo
   ])
 
-  // USB
+  // USB events
   useEffect(() => {
     const onUsbConnect = async () => {
       if (!hasStartedRef.current) {
@@ -311,18 +487,17 @@ const Carplay: React.FC<CarplayProps> = ({
       else if (data.type === 'unplugged') onUsbDisconnect()
     }
     window.carplay.usb.listenForEvents(usbHandler)
-
-      ; (async () => {
-        const last = await window.carplay.usb.getLastEvent()
-        if (last) usbHandler(null, last)
-      })()
+    ;(async () => {
+      const last = await window.carplay.usb.getLastEvent()
+      if (last) usbHandler(null, last)
+    })()
 
     return () => {
       window.electron?.ipcRenderer.removeListener('usb-event', usbHandler)
     }
   }, [setReceivingVideo, setDongleConnected, setStreaming, clearRetryTimeout, navigate, resetInfo])
 
-  // Settings-Events
+  // Settings/events from main
   useEffect(() => {
     const handler = (_: any, data: any) => {
       switch (data.type) {
@@ -372,7 +547,7 @@ const Carplay: React.FC<CarplayProps> = ({
     }
   }, [gotoHostUI, setReceivingVideo])
 
-  // Resize Observer
+  // Resize observer => inform render worker
   useEffect(() => {
     if (!carplayWorker || !mainElem.current) return
     const obs = new ResizeObserver(() => carplayWorker.postMessage({ type: 'frame' }))
@@ -380,7 +555,7 @@ const Carplay: React.FC<CarplayProps> = ({
     return () => obs.disconnect()
   }, [carplayWorker])
 
-  // KeyCommand
+  // Key commands
   useEffect(() => {
     if (commandCounter) {
       window.carplay.ipc.sendKeyCommand(command)
@@ -397,7 +572,21 @@ const Carplay: React.FC<CarplayProps> = ({
     }
   }, [carplayWorker])
 
-  const isLoading = !isStreaming
+  /* ---------------------- Force-hide video when not streaming --------------- */
+  useEffect(() => {
+    if (!isStreaming) {
+      setReceivingVideo(false)
+      if (canvasRef.current) {
+        canvasRef.current.style.width = '0'
+        canvasRef.current.style.height = '0'
+      }
+      renderWorkerRef.current?.postMessage({ type: 'clear' })
+    }
+  }, [isStreaming, setReceivingVideo])
+
+  /* ------------------------------- UI binding ------------------------------ */
+
+  const mode: 'dongle' | 'phone' = !isDongleConnected ? 'dongle' : 'phone'
 
   return (
     <div
@@ -406,27 +595,15 @@ const Carplay: React.FC<CarplayProps> = ({
       className="App"
       style={
         pathname === '/'
-          ? { height: '100%', width: '100%', touchAction: 'none' }
+          ? { height: '100%', width: '100%', touchAction: 'none', position: 'relative' }
           : { display: 'none' }
       }
     >
-      {(!isDongleConnected || isLoading) && pathname === '/' && (
-        <div
-          style={{
-            position: 'absolute',
-            width: '100%',
-            height: '100%',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            alignItems: 'center'
-          }}
-        >
-          <Typography>
-            {!isDongleConnected ? 'Searching For Dongle' : 'Searching For Phone'}
-          </Typography>
-        </div>
+      {/* Overlay (ring + icon chips) */}
+      {pathname === '/' && (
+        <StatusOverlay show={!isDongleConnected || !isStreaming} mode={mode} offsetY={overlayY} />
       )}
+
       <div
         id="videoContainer"
         ref={videoContainerRef}
@@ -438,8 +615,10 @@ const Carplay: React.FC<CarplayProps> = ({
           margin: 0,
           display: 'flex',
           touchAction: 'none',
+          backgroundColor: receivingVideo ? 'transparent' : theme.palette.background.default,
           visibility: receivingVideo ? 'visible' : 'hidden',
-          zIndex: receivingVideo ? 1 : -1
+          zIndex: receivingVideo ? 1 : -1,
+          position: 'relative'
         }}
       >
         <canvas
@@ -450,7 +629,7 @@ const Carplay: React.FC<CarplayProps> = ({
             height: receivingVideo ? '100%' : '0',
             touchAction: 'none',
             userSelect: 'none',
-            pointerEvents: 'none',
+            pointerEvents: 'none'
           }}
         />
       </div>
