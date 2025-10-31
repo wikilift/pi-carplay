@@ -1,5 +1,5 @@
-import { ExtraConfig } from "../../../main/Globals"
-import React, { useEffect, useMemo, useState } from "react"
+import { ExtraConfig } from '../../../main/Globals'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
   Box,
   FormControlLabel,
@@ -18,13 +18,13 @@ import {
   CircularProgress,
   Typography,
   MenuItem,
-  InputAdornment,
+  InputAdornment
 } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
 import type { SxProps, Theme } from '@mui/material/styles'
 import { TransitionProps } from '@mui/material/transitions'
-import { KeyBindings } from "./KeyBindings"
-import { useCarplayStore, useStatusStore } from "../store/store"
+import { KeyBindings } from './KeyBindings'
+import { useCarplayStore, useStatusStore } from '../store/store'
 import { updateCameras as detectCameras } from '../utils/cameraDetection'
 import debounce from 'lodash.debounce'
 
@@ -32,14 +32,22 @@ interface SettingsProps {
   settings: ExtraConfig | null
 }
 
+const MEDIA_DELAY_MIN = 300
+const MEDIA_DELAY_MAX = 2000
+const HEIGHT_MIN = 200
+const MIN_WIDTH = 400
+
 const Transition = React.forwardRef(function Transition(
   props: TransitionProps & { children: React.ReactElement },
-  ref: React.Ref<unknown>,
+  ref: React.Ref<unknown>
 ) {
   return <Slide direction="up" ref={ref} {...props} />
 })
 
-const SectionHeader: React.FC<{ children: React.ReactNode; sx?: SxProps<Theme> }> = ({ children, sx }) => {
+const SectionHeader: React.FC<{ children: React.ReactNode; sx?: SxProps<Theme> }> = ({
+  children,
+  sx
+}) => {
   const theme = useTheme()
   return (
     <Typography
@@ -57,9 +65,9 @@ const SectionHeader: React.FC<{ children: React.ReactNode; sx?: SxProps<Theme> }
           mt: 0.5,
           backgroundColor: theme.palette.primary.main,
           opacity: 0.6,
-          borderRadius: 1,
+          borderRadius: 1
         },
-        ...sx,
+        ...sx
       }}
     >
       {children}
@@ -73,26 +81,26 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
   const [activeSettings, setActiveSettings] = useState<ExtraConfig>({
     ...settings,
     audioVolume: settings.audioVolume ?? 1.0,
-    navVolume: settings.navVolume ?? 1.0,
+    navVolume: settings.navVolume ?? 1.0
   })
   const [micLabel, setMicLabel] = useState('not available')
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([])
   const [openBindings, setOpenBindings] = useState(false)
   const [isResetting, setIsResetting] = useState(false)
-  const [resetMessage, setResetMessage] = useState("")
+  const [resetMessage, setResetMessage] = useState('')
   const [closeCountdown, setCloseCountdown] = useState(0)
   const [hasChanges, setHasChanges] = useState(false)
   const [openAdvanced, setOpenAdvanced] = useState(false)
   const [micResetPending, setMicResetPending] = useState(false)
 
-  const saveSettings = useCarplayStore(s => s.saveSettings)
-  const isDongleConnected = useStatusStore(s => s.isDongleConnected)
-  const setCameraFound = useStatusStore(s => s.setCameraFound)
+  const saveSettings = useCarplayStore((s) => s.saveSettings)
+  const isDongleConnected = useStatusStore((s) => s.isDongleConnected)
+  const setCameraFound = useStatusStore((s) => s.setCameraFound)
   const theme = useTheme()
   const isDarkMode = theme.palette.mode === 'dark'
   const currentPrimary =
-    (isDarkMode ? activeSettings.primaryColorDark : activeSettings.primaryColorLight)
-    ?? theme.palette.primary.main
+    (isDarkMode ? activeSettings.primaryColorDark : activeSettings.primaryColorLight) ??
+    theme.palette.primary.main
 
   const debouncedSave = useMemo(
     () => debounce((newSettings: ExtraConfig) => saveSettings(newSettings), 300),
@@ -102,9 +110,12 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
 
   const autoSave = async (patch: Partial<ExtraConfig>) => {
     let kiosk = activeSettings.kiosk
-    try { kiosk = await window.app.getKiosk() } catch { }
+    try {
+      kiosk = await window.app.getKiosk()
+    } catch { }
     const current = useCarplayStore.getState().settings
-    const nightMode = typeof current?.nightMode === 'boolean' ? current!.nightMode : activeSettings.nightMode
+    const nightMode =
+      typeof current?.nightMode === 'boolean' ? current!.nightMode : activeSettings.nightMode
 
     const updated: ExtraConfig = { ...activeSettings, ...patch, kiosk, nightMode }
     setActiveSettings(updated)
@@ -112,7 +123,14 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
   }
 
   const requiresRestartParams: (keyof ExtraConfig)[] = [
-    'width', 'height', 'fps', 'dpi', 'format', 'mediaDelay', 'wifiType', 'audioTransferMode'
+    'width',
+    'height',
+    'fps',
+    'dpi',
+    'format',
+    'mediaDelay',
+    'wifiType',
+    'audioTransferMode'
   ]
 
   const getValidWifiChannel = (wifiType: ExtraConfig['wifiType'], ch?: number): number => {
@@ -120,6 +138,26 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
       return typeof ch === 'number' && ch >= 36 ? ch : 36
     }
     return typeof ch === 'number' && ch > 0 && ch < 36 ? ch : 6
+  }
+
+  // Sanitize inputs for guarded fields
+  const sanitizeSetting = (key: keyof ExtraConfig, raw: any): any => {
+    if (key === 'mediaDelay') {
+      const n = Number(raw)
+      if (!Number.isFinite(n)) return activeSettings.mediaDelay
+      return Math.min(MEDIA_DELAY_MAX, Math.max(MEDIA_DELAY_MIN, Math.round(n)))
+    }
+    if (key === 'height') {
+      const n = Number(raw)
+      if (!Number.isFinite(n)) return activeSettings.height
+      return Math.max(HEIGHT_MIN, Math.round(n))
+    }
+    if (key === 'width') {
+      const n = Number(raw)
+      if (!Number.isFinite(n)) return activeSettings.width
+      return Math.max(MIN_WIDTH, Math.round(n))
+    }
+    return raw
   }
 
   const settingsChange = (key: keyof ExtraConfig, value: any) => {
@@ -133,12 +171,18 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
       return
     }
 
-    let updated: ExtraConfig = { ...activeSettings, [key]: value }
+    // apply guards
+    const guardedValue = sanitizeSetting(key, value)
+
+    let updated: ExtraConfig = { ...activeSettings, [key]: guardedValue }
 
     if (key === 'wifiType') {
       updated = {
         ...updated,
-        wifiChannel: getValidWifiChannel(value as ExtraConfig['wifiType'], updated.wifiChannel)
+        wifiChannel: getValidWifiChannel(
+          guardedValue as ExtraConfig['wifiType'],
+          updated.wifiChannel
+        )
       }
     }
 
@@ -149,7 +193,7 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
     } else if (['kiosk', 'nightMode'].includes(key)) {
       saveSettings(updated)
     } else if (requiresRestartParams.includes(key)) {
-      const pending = requiresRestartParams.some(p => updated[p] !== settings[p])
+      const pending = requiresRestartParams.some((p) => updated[p] !== settings[p])
       setHasChanges(pending)
     } else {
       saveSettings(updated)
@@ -164,17 +208,17 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
       setCloseCountdown(3)
     }
 
-    let resetStatus = ""
+    let resetStatus = ''
     try {
       if (needsReset && isDongleConnected) {
-        setResetMessage("Dongle Reset...")
+        setResetMessage('Dongle Reset...')
         const ok = await window.carplay.usb.forceReset()
-        resetStatus = ok ? "Success" : "Failed"
+        resetStatus = ok ? 'Success' : 'Failed'
       } else {
-        resetStatus = "Settings saved (no dongle connected)"
+        resetStatus = 'Settings saved (no dongle connected)'
       }
     } catch {
-      resetStatus = "Dongle Reset Error."
+      resetStatus = 'Dongle Reset Error.'
     }
 
     await saveSettings(activeSettings)
@@ -187,10 +231,10 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
   useEffect(() => {
     if (!resetMessage) return
     const timerId = setInterval(() => {
-      setCloseCountdown(prev => {
+      setCloseCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(timerId)
-          setResetMessage("")
+          setResetMessage('')
           return 0
         }
         return prev - 1
@@ -213,7 +257,6 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
         const final = label && !['sysdefault', 'null'].includes(label) ? label : 'not available'
         setMicLabel(final)
 
-        // Only set once if user never chose a micType
         if (!activeSettings.micType) {
           await autoSave({ micType: (final === 'not available' ? 'box' : 'os') as 'box' | 'os' })
         }
@@ -246,20 +289,22 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
 
   useEffect(() => {
     let off: (() => void) | undefined
-    ;(async () => {
-      try {
-        const kiosk = await window.app.getKiosk()
-        setActiveSettings(prev => (prev.kiosk === kiosk ? prev : { ...prev, kiosk }))
-      } catch { }
-      off = window.app.onKioskSync(kiosk => {
-        setActiveSettings(prev => (prev.kiosk === kiosk ? prev : { ...prev, kiosk }))
-      })
-    })()
-    return () => { if (off) off() }
+      ; (async () => {
+        try {
+          const kiosk = await window.app.getKiosk()
+          setActiveSettings((prev) => (prev.kiosk === kiosk ? prev : { ...prev, kiosk }))
+        } catch { }
+        off = window.app.onKioskSync((kiosk) => {
+          setActiveSettings((prev) => (prev.kiosk === kiosk ? prev : { ...prev, kiosk }))
+        })
+      })()
+    return () => {
+      if (off) off()
+    }
   }, [])
 
   const handleClosePopup = () => {
-    setResetMessage("")
+    setResetMessage('')
     setCloseCountdown(0)
   }
 
@@ -282,7 +327,7 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
           py: 1.5,
           display: 'flex',
           flexDirection: 'column',
-          gap: 2,
+          gap: 2
         }}
       >
         <Grid container spacing={2} sx={{ px: 1 }}>
@@ -296,7 +341,7 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
                   gridTemplateColumns: '136px 24px 136px',
                   alignItems: 'center',
                   gap: 2,
-                  width: 'fit-content',
+                  width: 'fit-content'
                 }}
               >
                 <TextField
@@ -305,6 +350,10 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
                   type="number"
                   value={activeSettings.width}
                   onChange={e => settingsChange('width', Number(e.target.value))}
+                  InputProps={{
+                    inputProps: { min: MIN_WIDTH, step: 1 },
+                    endAdornment: <InputAdornment position="end">px</InputAdornment>
+                  }}
                   sx={{ width: 136 }}
                 />
                 <Typography sx={{ textAlign: 'center', fontSize: 22, lineHeight: 1 }}>×</Typography>
@@ -313,7 +362,11 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
                   label="HEIGHT"
                   type="number"
                   value={activeSettings.height}
-                  onChange={e => settingsChange('height', Number(e.target.value))}
+                  onChange={(e) => settingsChange('height', Number(e.target.value))}
+                  InputProps={{
+                    inputProps: { min: HEIGHT_MIN, step: 1 },
+                    endAdornment: <InputAdornment position="end">px</InputAdornment>
+                  }}
                   sx={{ width: 136 }}
                 />
               </Box>
@@ -325,7 +378,7 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
                   gridTemplateColumns: '136px 24px 136px',
                   alignItems: 'center',
                   gap: 2,
-                  width: 'fit-content',
+                  width: 'fit-content'
                 }}
               >
                 <TextField
@@ -333,7 +386,7 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
                   label="FPS"
                   type="number"
                   value={activeSettings.fps}
-                  onChange={e => settingsChange('fps', Number(e.target.value))}
+                  onChange={(e) => settingsChange('fps', Number(e.target.value))}
                   sx={{ width: 136 }}
                 />
                 <Box sx={{ width: 24, height: 1 }} />
@@ -342,7 +395,11 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
                   label="MEDIA DELAY"
                   type="number"
                   value={activeSettings.mediaDelay}
-                  onChange={e => settingsChange('mediaDelay', Number(e.target.value))}
+                  onChange={(e) => settingsChange('mediaDelay', Number(e.target.value))}
+                  InputProps={{
+                    inputProps: { min: MEDIA_DELAY_MIN, max: MEDIA_DELAY_MAX, step: 50 },
+                    endAdornment: <InputAdornment position="end">ms</InputAdornment>
+                  }}
                   sx={{ width: 136 }}
                 />
               </Box>
@@ -363,7 +420,9 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
                   step={5}
                   marks
                   valueLabelDisplay="auto"
-                  onChange={(_, v) => typeof v === 'number' && settingsChange('audioVolume', v / 100)}
+                  onChange={(_, v) =>
+                    typeof v === 'number' && settingsChange('audioVolume', v / 100)
+                  }
                 />
               </FormControl>
 
@@ -384,13 +443,7 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
           </Grid>
         </Grid>
 
-        <Grid
-          container
-          spacing={2}
-          sx={{ px: 1 }}
-          columns={12}
-          alignItems="center"
-        >
+        <Grid container spacing={2} sx={{ px: 1 }} columns={12} alignItems="center">
           <Grid size={{ xs: 6, sm: 3 }}>
             <Stack spacing={0.5}>
               <FormControlLabel
@@ -398,7 +451,7 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
                   <Checkbox
                     size="small"
                     checked={activeSettings.kiosk}
-                    onChange={e => settingsChange('kiosk', e.target.checked)}
+                    onChange={(e) => settingsChange('kiosk', e.target.checked)}
                   />
                 }
                 label="KIOSK"
@@ -408,7 +461,7 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
                   <Checkbox
                     size="small"
                     checked={activeSettings.nightMode}
-                    onChange={e => settingsChange('nightMode', e.target.checked)}
+                    onChange={(e) => settingsChange('nightMode', e.target.checked)}
                   />
                 }
                 label="DARK MODE"
@@ -418,7 +471,7 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
                   <Checkbox
                     size="small"
                     checked={activeSettings.audioTransferMode}
-                    onChange={e => settingsChange('audioTransferMode', e.target.checked)}
+                    onChange={(e) => settingsChange('audioTransferMode', e.target.checked)}
                   />
                 }
                 label="DISABLE AUDIO"
@@ -434,7 +487,7 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
               fullWidth
               label="WIFI"
               value={activeSettings.wifiType}
-              onChange={e => settingsChange('wifiType', e.target.value)}
+              onChange={(e) => settingsChange('wifiType', e.target.value)}
             >
               <MenuItem value="2.4ghz">2.4 GHz</MenuItem>
               <MenuItem value="5ghz">5 GHz</MenuItem>
@@ -449,12 +502,9 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
               fullWidth
               label="MICROPHONE"
               value={activeSettings.micType}
-              onChange={e => settingsChange('micType', e.target.value as 'box' | 'os')}
+              onChange={(e) => settingsChange('micType', e.target.value as 'box' | 'os')}
             >
-              <MenuItem
-                value="os"
-                disabled={micUnavailable && activeSettings.micType !== 'os'}
-              >
+              <MenuItem value="os" disabled={micUnavailable && activeSettings.micType !== 'os'}>
                 <Typography noWrap component="span" title={micLabel}>
                   {renderOsMicLabel(micLabel)}
                 </Typography>
@@ -471,13 +521,15 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
               fullWidth
               label="CAMERA"
               value={activeSettings.camera ?? ''}
-              onChange={e => settingsChange('camera', e.target.value)}
+              onChange={(e) => settingsChange('camera', e.target.value)}
             >
-              {(cameras.length ? cameras : [{ deviceId: '', label: 'No camera' }]).map((cam: any) => (
-                <MenuItem key={cam.deviceId ?? 'none'} value={cam.deviceId ?? ''}>
-                  {cam.label || 'Camera'}
-                </MenuItem>
-              ))}
+              {(cameras.length ? cameras : [{ deviceId: '', label: 'No camera' }]).map(
+                (cam: any) => (
+                  <MenuItem key={cam.deviceId ?? 'none'} value={cam.deviceId ?? ''}>
+                    {cam.label || 'Camera'}
+                  </MenuItem>
+                )
+              )}
             </TextField>
           </Grid>
         </Grid>
@@ -501,8 +553,8 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
           <Button
             variant="contained"
             className="hover-ring"
-            color={(hasChanges || micResetPending) ? 'primary' : 'inherit'}
-            onClick={(hasChanges || micResetPending) ? handleSave : undefined}
+            color={hasChanges || micResetPending ? 'primary' : 'inherit'}
+            onClick={hasChanges || micResetPending ? handleSave : undefined}
             disabled={!(hasChanges || micResetPending) || isResetting}
           >
             SAVE
@@ -519,7 +571,9 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
       <Dialog open={!!resetMessage} onClose={handleClosePopup}>
         <DialogTitle>Reset Status</DialogTitle>
         <DialogContent sx={{ textAlign: 'center' }}>
-          <Typography variant="body1" sx={{ mb: 2 }}>{resetMessage}</Typography>
+          <Typography variant="body1" sx={{ mb: 2 }}>
+            {resetMessage}
+          </Typography>
           <Box display="flex" justifyContent="center">
             <Button variant="outlined" onClick={handleClosePopup}>
               Close{closeCountdown > 0 ? ` (${closeCountdown})` : ''}
@@ -559,20 +613,23 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
         <DialogTitle>Advanced Settings</DialogTitle>
         <DialogContent sx={{ pt: 2, pb: 2, px: 2.25, overflow: 'visible' }}>
           <Box
-            sx={theme => ({
+            sx={(theme) => ({
               display: 'grid',
               gridTemplateColumns: '120px 120px',
               columnGap: theme.spacing(1.5),
               rowGap: theme.spacing(1.5),
-              justifyContent: 'center',
+              justifyContent: 'center'
             })}
           >
             <TextField
               size="small"
               label={isDarkMode ? 'PRIMARY (DARK)' : 'PRIMARY (LIGHT)'}
               value={currentPrimary}
-              onChange={e =>
-                settingsChange(isDarkMode ? 'primaryColorDark' : 'primaryColorLight', e.target.value)
+              onChange={(e) =>
+                settingsChange(
+                  isDarkMode ? 'primaryColorDark' : 'primaryColorLight',
+                  e.target.value
+                )
               }
               InputProps={{
                 inputProps: { type: 'color' },
@@ -582,14 +639,17 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
                       size="small"
                       variant="outlined"
                       onClick={() =>
-                        settingsChange(isDarkMode ? 'primaryColorDark' : 'primaryColorLight', undefined)
+                        settingsChange(
+                          isDarkMode ? 'primaryColorDark' : 'primaryColorLight',
+                          undefined
+                        )
                       }
                       sx={{ ml: 1, py: 0.25, px: 1 }}
                     >
                       RESET
                     </Button>
                   </InputAdornment>
-                ),
+                )
               }}
               InputLabelProps={{ shrink: true }}
               fullWidth
@@ -601,7 +661,7 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
               size="small"
               margin="dense"
               value={activeSettings.dpi}
-              onChange={e => settingsChange('dpi', Number(e.target.value))}
+              onChange={(e) => settingsChange('dpi', Number(e.target.value))}
               InputLabelProps={{ shrink: true }}
               autoFocus
               sx={{ width: 120 }}
@@ -612,7 +672,7 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
               size="small"
               margin="dense"
               value={activeSettings.format}
-              onChange={e => settingsChange('format', Number(e.target.value))}
+              onChange={(e) => settingsChange('format', Number(e.target.value))}
               InputLabelProps={{ shrink: true }}
               sx={{ width: 120 }}
             />
