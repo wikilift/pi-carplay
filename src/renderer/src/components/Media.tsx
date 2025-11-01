@@ -54,18 +54,38 @@ function payloadFromLiveEvent(ev: any): MediaPayload | null {
 function useElementSize<T extends HTMLElement>() {
   const ref = useRef<T | null>(null)
   const [size, set] = useState({ w: window.innerWidth, h: window.innerHeight })
+  const rafRef = useRef<number | null>(null)
+  const pendingRef = useRef<{ w: number; h: number } | null>(null)
+
   useEffect(() => {
     const el = ref.current
     if (!el) return
+
+    const flush = () => {
+      rafRef.current = null
+      const next = pendingRef.current
+      pendingRef.current = null
+      if (!next) return
+      set(prev => (prev.w !== next.w || prev.h !== next.h ? next : prev))
+    }
+
     const ro = new ResizeObserver((entries) => {
-      for (const e of entries) {
-        const r = e.contentRect
-        set({ w: r.width, h: r.height })
+      const r = entries[0]?.contentRect
+      if (!r) return
+      // Round to avoid sub-pixel churn
+      pendingRef.current = { w: Math.round(r.width), h: Math.round(r.height) }
+      if (rafRef.current == null) {
+        rafRef.current = requestAnimationFrame(flush)
       }
     })
+
     ro.observe(el)
-    return () => ro.disconnect()
+    return () => {
+      ro.disconnect()
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
+    }
   }, [])
+
   return [ref, size] as const
 }
 
@@ -123,8 +143,8 @@ function useOptimisticPlaying(realPlaying: boolean | undefined) {
 // Button feedback
 function usePressFeedback() {
   const press = { play: false, next: false, prev: false } as const
-  const bump = (_key: keyof typeof press, _ms = 140) => {}
-  const reset = () => {}
+  const bump = (_key: keyof typeof press, _ms = 140) => { }
+  const reset = () => { }
   return { press, bump, reset }
 }
 
@@ -164,16 +184,16 @@ function useMediaState(allowInitialHydrate: boolean) {
       })
     }
 
-    ;(window.carplay.ipc as any).onEvent?.(handler)
+      ; (window.carplay.ipc as any).onEvent?.(handler)
     return () => {
       if ((window.carplay.ipc as any).offEvent) {
         try {
-          ;(window.carplay.ipc as any).offEvent(handler)
-        } catch {}
+          ; (window.carplay.ipc as any).offEvent(handler)
+        } catch { }
       } else {
         try {
-          ;(window.electron as any)?.ipcRenderer?.removeListener?.('carplay-event', handler)
-        } catch {}
+          ; (window.electron as any)?.ipcRenderer?.removeListener?.('carplay-event', handler)
+        } catch { }
       }
     }
   }, [])
@@ -181,20 +201,20 @@ function useMediaState(allowInitialHydrate: boolean) {
   useEffect(() => {
     if (!allowInitialHydrate || hydratedOnceRef.current) return
     let cancelled = false
-    ;(async () => {
-      try {
-        const initial = await window.carplay.ipc.readMedia()
-        if (!cancelled && initial) {
-          hydratedOnceRef.current = true
-          setSnap(initial)
-          const t0 = initial.payload.media?.MediaSongPlayTime ?? 0
-          setLivePlayMs(t0)
-          livePlayMsRef.current = t0
-          lastTick.current = performance.now()
-          lastUiUpdateRef.current = lastTick.current
-        }
-      } catch {}
-    })()
+      ; (async () => {
+        try {
+          const initial = await window.carplay.ipc.readMedia()
+          if (!cancelled && initial) {
+            hydratedOnceRef.current = true
+            setSnap(initial)
+            const t0 = initial.payload.media?.MediaSongPlayTime ?? 0
+            setLivePlayMs(t0)
+            livePlayMsRef.current = t0
+            lastTick.current = performance.now()
+            lastUiUpdateRef.current = lastTick.current
+          }
+        } catch { }
+      })()
     return () => {
       cancelled = true
     }
@@ -202,10 +222,13 @@ function useMediaState(allowInitialHydrate: boolean) {
 
   useEffect(() => {
     let raf = 0
+    const UI_INTERVAL_MS = 120
+
     const loop = () => {
       raf = requestAnimationFrame(loop)
       const m = snap?.payload.media
       if (!m) return
+
       const now = performance.now()
       const dt = now - lastTick.current
       lastTick.current = now
@@ -215,13 +238,13 @@ function useMediaState(allowInitialHydrate: boolean) {
         const next = clamp((livePlayMsRef.current ?? 0) + dt, 0, dur)
         livePlayMsRef.current = next
 
-        // Update UI max 60 Hz
-        if (now - lastUiUpdateRef.current > 17) {
-          setLivePlayMs(next)
+        if (now - lastUiUpdateRef.current >= UI_INTERVAL_MS) {
           lastUiUpdateRef.current = now
+          setLivePlayMs(next)
         }
       }
     }
+
     raf = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(raf)
   }, [snap])

@@ -75,6 +75,13 @@ const SectionHeader: React.FC<{ children: React.ReactNode; sx?: SxProps<Theme> }
   )
 }
 
+function coerceSelectValue<T extends string | number>(
+  value: T | null | undefined,
+  options: readonly T[]
+): T | '' {
+  return value != null && options.includes(value as T) ? (value as T) : ''
+}
+
 const Settings: React.FC<SettingsProps> = ({ settings }) => {
   if (!settings) return null
 
@@ -140,7 +147,6 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
     return typeof ch === 'number' && ch > 0 && ch < 36 ? ch : 6
   }
 
-  // Sanitize inputs for guarded fields
   const sanitizeSetting = (key: keyof ExtraConfig, raw: any): any => {
     if (key === 'mediaDelay') {
       const n = Number(raw)
@@ -171,9 +177,7 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
       return
     }
 
-    // apply guards
     const guardedValue = sanitizeSetting(key, value)
-
     let updated: ExtraConfig = { ...activeSettings, [key]: guardedValue }
 
     if (key === 'wifiType') {
@@ -309,6 +313,18 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
   }
 
   const micUnavailable = micLabel === 'not available'
+
+  const cameraIds = useMemo<readonly string[]>(
+    () => (cameras.length ? cameras.map(c => c.deviceId ?? '') : ['']),
+    [cameras]
+  )
+  const cameraValue = coerceSelectValue(activeSettings.camera ?? '', cameraIds)
+
+  const wifiOptions = ['2.4ghz', '5ghz'] as const
+  const wifiValue = coerceSelectValue(
+    (activeSettings.wifiType as unknown as string) ?? '',
+    wifiOptions as unknown as string[]
+  )
 
   return (
     <Box
@@ -486,7 +502,7 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
               select
               fullWidth
               label="WIFI"
-              value={activeSettings.wifiType}
+              value={wifiValue}
               onChange={(e) => settingsChange('wifiType', e.target.value)}
             >
               <MenuItem value="2.4ghz">2.4 GHz</MenuItem>
@@ -520,16 +536,14 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
               select
               fullWidth
               label="CAMERA"
-              value={activeSettings.camera ?? ''}
+              value={cameraValue}
               onChange={(e) => settingsChange('camera', e.target.value)}
             >
-              {(cameras.length ? cameras : [{ deviceId: '', label: 'No camera' }]).map(
-                (cam: any) => (
-                  <MenuItem key={cam.deviceId ?? 'none'} value={cam.deviceId ?? ''}>
-                    {cam.label || 'Camera'}
-                  </MenuItem>
-                )
-              )}
+              {(cameras.length ? cameras : [{ deviceId: '', label: 'No camera' }]).map((cam: any) => (
+                <MenuItem key={cam.deviceId ?? 'none'} value={cam.deviceId ?? ''}>
+                  {cam.label || 'Camera'}
+                </MenuItem>
+              ))}
             </TextField>
           </Grid>
         </Grid>
@@ -595,7 +609,6 @@ const Settings: React.FC<SettingsProps> = ({ settings }) => {
         </DialogContent>
       </Dialog>
 
-      {/* ADVANCED */}
       <Dialog
         open={openAdvanced}
         TransitionComponent={Transition}

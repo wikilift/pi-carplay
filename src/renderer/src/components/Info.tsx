@@ -129,21 +129,43 @@ export default function Info() {
       <Stack direction="row" spacing={1} alignItems="baseline">
         <Typography sx={{ minWidth: 112, color: theme.palette.text.secondary }}>{label}:</Typography>
         <Tooltip title={tooltipTitle} disableInteractive>
-          <Typography
-            sx={{
-              color,
-              fontVariantNumeric: 'tabular-nums',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              maxWidth: `${opts.maxCh ?? 26}ch`,
-              fontFamily: opts.mono
-                ? 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace'
-                : undefined,
-            }}
-          >
-            {value ?? '—'}
-          </Typography>
+          {isString ? (
+            <Typography
+              component="span"
+              sx={{
+                color,
+                fontVariantNumeric: 'tabular-nums',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                maxWidth: `${opts.maxCh ?? 26}ch`,
+                fontFamily: opts.mono
+                  ? 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace'
+                  : undefined,
+              }}
+            >
+              {value ?? '—'}
+            </Typography>
+          ) : (
+            <Box
+              component="div"
+              sx={{
+                color,
+                fontVariantNumeric: 'tabular-nums',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                maxWidth: `${opts.maxCh ?? 26}ch`,
+                fontFamily: opts.mono
+                  ? 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace'
+                  : undefined,
+                display: 'inline-flex',
+                alignItems: 'center',
+              }}
+            >
+              {value ?? '—'}
+            </Box>
+          )}
         </Tooltip>
       </Stack>
     )
@@ -235,7 +257,7 @@ export default function Info() {
     setTotal(0)
     setPhase('start')
     setUpDialogOpen(true)
-    ;(window as any)?.app?.performUpdate?.(latestUrl)
+      ; (window as any)?.app?.performUpdate?.(latestUrl)
   }
 
   const onPrimaryAction = () => {
@@ -254,20 +276,20 @@ export default function Info() {
     phase === 'download'
       ? 'Downloading'
       : phase === 'installing'
-      ? 'Installing'
-      : phase === 'mounting'
-      ? 'Mounting image'
-      : phase === 'copying'
-      ? 'Copying'
-      : phase === 'unmounting'
-      ? 'Finalizing'
-      : phase === 'relaunching'
-      ? 'Relaunching'
-      : phase === 'start'
-      ? 'Starting…'
-      : phase === 'error'
-      ? 'Error'
-      : 'Working…'
+        ? 'Installing'
+        : phase === 'mounting'
+          ? 'Mounting image'
+          : phase === 'copying'
+            ? 'Copying'
+            : phase === 'unmounting'
+              ? 'Finalizing'
+              : phase === 'relaunching'
+                ? 'Relaunching'
+                : phase === 'start'
+                  ? 'Starting…'
+                  : phase === 'error'
+                    ? 'Error'
+                    : 'Working…'
 
   const isUpToDate = hasLatest && cmp === 0
 
