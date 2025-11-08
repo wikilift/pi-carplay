@@ -381,7 +381,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings }) => {
   const renderOsMicLabel = (raw: string) => {
     if (raw === 'not available') return 'No system input'
     const lower = raw.toLowerCase()
-    if (lower === 'system default' || lower === 'default') return 'OS mic (auto)'
+    if (lower === 'system default' || lower === 'default') return 'OS default'
     return `OS • ${raw}`
   }
 
@@ -480,18 +480,32 @@ export const Settings: React.FC<SettingsProps> = ({ settings }) => {
     wifiOptions as unknown as string[]
   )
 
-  if (!hasSettings) return null
-
   const setBool =
     <K extends ToggleKey>(key: K) =>
     (_: React.ChangeEvent<HTMLInputElement>, checked: boolean) =>
       settingsChange(key, checked as unknown as ExtraConfig[K])
 
-  // Visual state for Audio (true = audio on), write inverted
   const audioEnabled = !activeSettings.audioTransferMode
   const onAudioSwitch = (_e: React.ChangeEvent<HTMLInputElement>, checked: boolean) => {
     settingsChange('audioTransferMode', !checked as ExtraConfig['audioTransferMode'])
   }
+
+  const openSelectOnEnter = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Enter') return
+    const root = e.currentTarget as HTMLElement
+    const btn =
+      root.querySelector<HTMLElement>('[role="button"][aria-haspopup="listbox"]') ??
+      (root.matches('[role="button"][aria-haspopup="listbox"]') ? root : null)
+
+    if (btn) {
+      e.preventDefault()
+      e.stopPropagation()
+      btn.focus()
+      btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
+      btn.click()
+    }
+  }, [])
+  if (!hasSettings) return null
 
   return (
     <Box
@@ -690,23 +704,27 @@ export const Settings: React.FC<SettingsProps> = ({ settings }) => {
                 return (
                   <React.Fragment key={item.key}>
                     <FormControlLabel
-                      sx={{
+                      sx={(theme) => ({
                         m: 0,
                         px: 0.25,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        minHeight: 32
-                      }}
+                        minHeight: 32,
+                        '&:has(.MuiSwitch-input:focus-visible)': {
+                          outline: `2px solid ${theme.palette.primary.main}`,
+                          outlineOffset: 2,
+                          borderRadius: 6
+                        },
+                        '&:has(.MuiSwitch-input:focus-visible) .MuiFormControlLabel-label': {
+                          color: theme.palette.primary.main,
+                          fontWeight: 600
+                        }
+                      })}
                       labelPlacement="end"
                       label={
                         <Tooltip title={item.title} enterDelay={150}>
-                          <div
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center'
-                            }}
-                          >
+                          <div style={{ display: 'flex', alignItems: 'center' }}>
                             <span
                               style={{
                                 fontSize: '0.85rem',
@@ -773,6 +791,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings }) => {
                   sx={{ minWidth: 0 }}
                   label="WIFI"
                   value={wifiValue}
+                  onKeyDown={openSelectOnEnter}
                   onChange={(e) => settingsChange('wifiType', toWifiType(e.target.value))}
                 >
                   <MenuItem value="2.4ghz">2.4 GHz</MenuItem>
@@ -791,6 +810,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings }) => {
                   sx={{ minWidth: 0 }}
                   label="MICROPHONE"
                   value={activeSettings.micType}
+                  onKeyDown={openSelectOnEnter}
                   onChange={(e) => settingsChange('micType', e.target.value as 'box' | 'os')}
                 >
                   <MenuItem value="os" disabled={micUnavailable && activeSettings.micType !== 'os'}>
@@ -813,6 +833,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings }) => {
                   sx={{ minWidth: 0 }}
                   label="CAMERA"
                   value={cameraValue}
+                  onKeyDown={openSelectOnEnter}
                   onChange={(e) => settingsChange('camera', e.target.value)}
                 >
                   {cameraOptions.map((cam) => (
@@ -855,6 +876,7 @@ export const Settings: React.FC<SettingsProps> = ({ settings }) => {
                   value={
                     typeof activeSettings.mediaSound === 'number' ? activeSettings.mediaSound : 1
                   }
+                  onKeyDown={openSelectOnEnter}
                   onChange={(e) => settingsChange('mediaSound', Number(e.target.value) as 0 | 1)}
                   helperText=" "
                 >
