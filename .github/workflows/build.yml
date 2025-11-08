@@ -56,6 +56,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
 
       - name: Setup npm 11.x
         run: |
@@ -63,20 +65,48 @@ jobs:
           echo "npm version: $(npm -v)"
           node -e "const v=require('child_process').execSync('npm -v').toString().trim(); if(!/^11\./.test(v)){console.error('Expected npm 11.x, got', v); process.exit(1);} console.log('npm 11 OK');"
 
+      - name: Set electron-builder cache path
+        run: echo "ELECTRON_BUILDER_CACHE=$RUNNER_TEMP/.cache/electron-builder" >> "$GITHUB_ENV"
+
+      - name: Capture runtime versions
+        id: rt
+        run: |
+          echo "node=$(node -v | sed 's/^v//')" >> "$GITHUB_OUTPUT"
+          echo "npm=$(npm -v)" >> "$GITHUB_OUTPUT"
+
       - name: Read version from package.json
         id: pkg
         run: |
           VERSION=$(node -p "require('./package.json').version")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Read Electron semver from package.json
+        id: el
+        run: |
+          echo "semver=$(node -p 'require(\"./package.json\").devDependencies.electron')" >> "$GITHUB_OUTPUT"
+
       - name: Cache Electron headers
+        if: matrix.platform != 'arm64'
         uses: actions/cache@v4
         with:
           path: |
             $HOME/.electron-gyp
             $HOME/.cache/node-gyp
             $HOME/Library/Caches/node-gyp
-          key: electron-gyp-${{ runner.os }}
+          key: electron-gyp-${{ runner.os }}-${{ steps.el.outputs.semver }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            electron-gyp-${{ runner.os }}-${{ steps.el.outputs.semver }}-
+            electron-gyp-${{ runner.os }}-
+
+      - name: Cache electron-builder cache
+        if: matrix.platform != 'arm64'
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.ELECTRON_BUILDER_CACHE }}
+          key: eb-cache-${{ runner.os }}-${{ steps.el.outputs.semver }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            eb-cache-${{ runner.os }}-${{ steps.el.outputs.semver }}-
+            eb-cache-${{ runner.os }}-
 
       - name: Build for x86_64 (native Ubuntu)
         if: matrix.platform == 'x86_64'
@@ -84,7 +114,8 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y build-essential python3 python3-dev libusb-1.0-0-dev libudev-dev pkg-config libusb-1.0-0 libudev1
+          sudo apt-get install -y --no-install-recommends build-essential python3 python3-dev libusb-1.0-0-dev libudev-dev pkg-config libusb-1.0-0 libudev1 ca-certificates
+          sudo rm -rf /var/lib/apt/lists/*
 
           # Disable root postinstall so install doesn't trigger electron-builder
           node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));if(p.scripts&&p.scripts.postinstall){p.scripts._postinstall=p.scripts.postinstall;delete p.scripts.postinstall;fs.writeFileSync('package.json',JSON.stringify(p,null,2));console.log('postinstall disabled');}else{console.log('no postinstall found');}"
@@ -97,24 +128,30 @@ jobs:
           npx --yes node-gyp install --target="$ELECTRON_VERSION" --dist-url=https://artifacts.electronjs.org/headers/dist
 
           # Rebuild native deps against Electron
-          npx electron-rebuild -f
+          npm run rebuild:native
 
           npm run typecheck
-          npm run build
           npm run build:linux
 
       - name: Build for ARM64 (emulated)
         if: matrix.platform == 'arm64'
         uses: uraimo/run-on-arch-action@v3
         with:
-          arch: aarch64
-          distro: ubuntu24.04
+          arch: none
+          distro: none
+          base_image: --platform=linux/arm64/v8 node:22-trixie-slim
           run: |
             set -euo pipefail
+
+            # ARM64 check
+            echo "uname -m: $(uname -m)"
+            echo "dpkg arch: $(dpkg --print-architecture)"
+            echo "node arch: $(node -p process.arch)"
+
             apt-get update
-            apt-get install -y curl git
-            curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-            apt-get install -y nodejs build-essential python3 python3-dev libusb-1.0-0-dev libudev-dev pkg-config libusb-1.0-0 libudev1
+            apt-get install -y --no-install-recommends git build-essential python3 python3-dev libusb-1.0-0-dev libudev-dev pkg-config libusb-1.0-0 libudev1 ca-certificates
+            rm -rf /var/lib/apt/lists/*
+
             npm i -g npm@^11
             echo "npm version: $(npm -v)"
             node -e "const v=require('child_process').execSync('npm -v').toString().trim(); if(!/^11\./.test(v)){console.error('Expected npm 11.x, got', v); process.exit(1);} console.log('npm 11 OK');"
@@ -131,9 +168,7 @@ jobs:
             echo "electron=$ELECTRON_VERSION"
             npx --yes node-gyp install --target="$ELECTRON_VERSION" --dist-url=https://artifacts.electronjs.org/headers/dist
 
-            npx electron-rebuild -f
-            npm run typecheck
-            npm run build
+            npm run rebuild:native
             npm run build:armLinux
 
             mkdir -p /github/workspace/dist/
@@ -170,9 +205,10 @@ jobs:
           echo "electron=$ELECTRON_VERSION"
           npx --yes node-gyp install --target="$ELECTRON_VERSION" --dist-url=https://artifacts.electronjs.org/headers/dist
 
-          npx electron-rebuild -f
+          # Rebuild native deps against Electron
+          npm run rebuild:native
+
           npm run typecheck
-          npm run build
           npm run build:mac
 
       - name: Upload Artifacts
@@ -180,8 +216,8 @@ jobs:
         with:
           name: pi-carplay-${{ steps.pkg.outputs.version }}-${{ matrix.platform }}.${{ matrix.artifact_ext }}
           path: |
-            dist/*${{ matrix.artifact_ext == 'dmg' && 'arm64.dmg' || (matrix.artifact_ext == 'AppImage' && (matrix.platform == 'arm64' && 'arm64.AppImage' || 'x86_64.AppImage')) }}
-          retention-days: 10
+            dist/*${{ matrix.artifact_ext == 'dmg' && 'arm64.dmg' || (matrix.artifact_ext == 'AppImage' && (matrix.platform == 'arm64' && '-arm64.AppImage' || '-x86_64.AppImage')) }}
+          retention-days: 7
 
       - name: Write version badge JSON
         if: matrix.platform == 'x86_64' && (env.BUILD_BRANCH == 'main' || env.BUILD_BRANCH == 'dev')
@@ -190,17 +226,6 @@ jobs:
           mkdir -p .github/badges
           echo "{\"schemaVersion\":1,\"label\":\"${BRANCH_NAME}\",\"message\":\"v${{ steps.pkg.outputs.version }}\",\"color\":\"lightgrey\"}" > ".github/badges/${BRANCH_NAME}-version.json"
 
-      - name: Setup latest Node.js 22.x
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: 'npm'
-
-      - name: Setup npm 11.x
-        run: |
-          npm i -g npm@^11
-          node -e "const v=require('child_process').execSync('npm -v').toString().trim(); if(!/^11\./.test(v)){console.error('Expected npm 11.x, got', v); process.exit(1);} console.log('npm 11 OK');"
-
       - name: Push version badge to version branch
         if: matrix.platform == 'x86_64' && (env.BUILD_BRANCH == 'main' || env.BUILD_BRANCH == 'dev')
         env:
@@ -208,8 +233,8 @@ jobs:
         run: |
           BRANCH_NAME="${BUILD_BRANCH}"
           VERSION="${{ steps.pkg.outputs.version }}"
-          NODE_VERSION=$(node -v | sed 's/^v//')
-          NPM_VERSION=$(npm -v)
+          NODE_VERSION="${{ steps.rt.outputs.node }}"
+          NPM_VERSION="${{ steps.rt.outputs.npm }}"
 
           mkdir temp-badges
           cd temp-badges
@@ -242,5 +267,5 @@ jobs:
       - uses: Mattraks/delete-workflow-runs@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          retain_days: 10
-          keep_minimum_runs: 5
+          retain_days: 7
+          keep_minimum_runs: 1
