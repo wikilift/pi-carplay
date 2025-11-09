@@ -235,6 +235,7 @@ jobs:
           VERSION="${{ steps.pkg.outputs.version }}"
           NODE_VERSION="${{ steps.rt.outputs.node }}"
           NPM_VERSION="${{ steps.rt.outputs.npm }}"
+          ELECTRON_SEMVER="$(node -e "try{console.log(require('./node_modules/electron/package.json').version)}catch(e){try{console.log(require('./package.json').devDependencies.electron)}catch(e){console.log('unknown')}}" )"
 
           mkdir temp-badges
           cd temp-badges
@@ -248,10 +249,12 @@ jobs:
           echo "{\"schemaVersion\":1,\"label\":\"${BRANCH_NAME}\",\"message\":\"v${VERSION}\",\"color\":\"lightblue\"}" > ".github/badges/${BRANCH_NAME}-version.json"
           echo "{\"schemaVersion\":1,\"label\":\"node\",\"message\":\"${NODE_VERSION}\",\"color\":\"lightgrey\"}" > ".github/badges/${BRANCH_NAME}-node.json"
           echo "{\"schemaVersion\":1,\"label\":\"npm\",\"message\":\"${NPM_VERSION}\",\"color\":\"lightgrey\"}" > ".github/badges/${BRANCH_NAME}-npm.json"
+          echo "{\"schemaVersion\":1,\"label\":\"electron\",\"message\":\"${ELECTRON_SEMVER}\",\"color\":\"lightblue\"}" > ".github/badges/${BRANCH_NAME}-electron.json"
 
           git add .github/badges/${BRANCH_NAME}-version.json
           git add .github/badges/${BRANCH_NAME}-node.json
           git add .github/badges/${BRANCH_NAME}-npm.json
+          git add .github/badges/${BRANCH_NAME}-electron.json
 
           git commit -m "Update ${BRANCH_NAME} badges: version ${VERSION}, node ${NODE_VERSION}, npm ${NPM_VERSION}" || echo "No changes"
           git push
