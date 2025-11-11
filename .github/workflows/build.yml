@@ -85,27 +85,49 @@ jobs:
         run: |
           echo "semver=$(node -p 'require(\"./package.json\").devDependencies.electron')" >> "$GITHUB_OUTPUT"
 
-      - name: Cache Electron headers
-        if: matrix.platform != 'arm64'
+      - name: Build for x86_64 (native)
+        if: matrix.platform == 'x86_64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+              build-essential python3 python3-dev libusb-1.0-0-dev libudev-dev \
+              pkg-config libusb-1.0-0 libudev1 ca-certificates
+          sudo rm -rf /var/lib/apt/lists/*
+
+          # Install from package-lock
+          npm run install:ci
+
+      # Resolve installed Electron version (for caches & headers)
+      - name: Resolve Electron version (installed) [x86_64]
+        if: matrix.platform == 'x86_64'
+        id: elres_x86
+        run: |
+          ELECTRON_VERSION="$(node -p "require('./node_modules/electron/package.json').version")"
+          echo "resolved=${ELECTRON_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Electron headers (resolved) [x86_64]
+        if: matrix.platform == 'x86_64'
         uses: actions/cache@v4
         with:
           path: |
             $HOME/.electron-gyp
             $HOME/.cache/node-gyp
             $HOME/Library/Caches/node-gyp
-          key: electron-gyp-${{ runner.os }}-${{ steps.el.outputs.semver }}-${{ hashFiles('**/package-lock.json') }}
+          key: electron-gyp-${{ runner.os }}-${{ steps.elres_x86.outputs.resolved }}-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
-            electron-gyp-${{ runner.os }}-${{ steps.el.outputs.semver }}-
+            electron-gyp-${{ runner.os }}-${{ steps.elres_x86.outputs.resolved }}-
             electron-gyp-${{ runner.os }}-
 
-      - name: Cache electron-builder cache
-        if: matrix.platform != 'arm64'
+      - name: Cache electron-builder cache (resolved) [x86_64]
+        if: matrix.platform == 'x86_64'
         uses: actions/cache@v4
         with:
           path: ${{ env.ELECTRON_BUILDER_CACHE }}
-          key: eb-cache-${{ runner.os }}-${{ steps.el.outputs.semver }}-${{ hashFiles('**/package-lock.json') }}
+          key: eb-cache-${{ runner.os }}-${{ steps.elres_x86.outputs.resolved }}-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
-            eb-cache-${{ runner.os }}-${{ steps.el.outputs.semver }}-
+            eb-cache-${{ runner.os }}-${{ steps.elres_x86.outputs.resolved }}-
             eb-cache-${{ runner.os }}-
 
       - name: Build for x86_64 (native Ubuntu)
@@ -113,14 +135,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential python3 python3-dev libusb-1.0-0-dev libudev-dev pkg-config libusb-1.0-0 libudev1 ca-certificates
-          sudo rm -rf /var/lib/apt/lists/*
-
-          # Disable root postinstall so install doesn't trigger electron-builder
-          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));if(p.scripts&&p.scripts.postinstall){p.scripts._postinstall=p.scripts.postinstall;delete p.scripts.postinstall;fs.writeFileSync('package.json',JSON.stringify(p,null,2));console.log('postinstall disabled');}else{console.log('no postinstall found');}"
-
-          npm run install:clean
 
           # Prefetch headers for the installed Electron version
           ELECTRON_VERSION=$(node -p "require('./node_modules/electron/package.json').version")
@@ -131,6 +145,7 @@ jobs:
           npm run rebuild:native
 
           npm run typecheck
+          rm -rf dist
           npm run build:linux
 
       - name: Build for ARM64 (emulated)
@@ -159,10 +174,8 @@ jobs:
             echo "==> Waiting for file system to settle (QEMU workaround)..."
             sleep 15
 
-            # Disable root postinstall in this environment
-            node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));if(p.scripts&&p.scripts.postinstall){p.scripts._postinstall=p.scripts.postinstall;delete p.scripts.postinstall;fs.writeFileSync('package.json',JSON.stringify(p,null,2));console.log('postinstall disabled');}else{console.log('no postinstall found');}"
-
-            npm run install:clean
+            # Install from package-lock
+            npm run install:ci
 
             ELECTRON_VERSION=$(node -p "require('./node_modules/electron/package.json').version")
             echo "electron=$ELECTRON_VERSION"
@@ -196,10 +209,45 @@ jobs:
           echo "npm version: $(npm -v)"
           node -e "const v=require('child_process').execSync('npm -v').toString().trim(); if(!/^11\./.test(v)){console.error('Expected npm 11.x, got', v); process.exit(1);} console.log('npm 11 OK');"
 
-          # Disable root postinstall in this environment
-          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));if(p.scripts&&p.scripts.postinstall){p.scripts._postinstall=p.scripts.postinstall;delete p.scripts.postinstall;fs.writeFileSync('package.json',JSON.stringify(p,null,2));console.log('postinstall disabled');}else{console.log('no postinstall found');}"
+          # Install from package-lock
+          npm run install:ci
 
-          npm run install:clean
+      # Resolve installed Electron version (for caches & headers)
+      - name: Resolve Electron version (installed) [darwin]
+        if: matrix.platform == 'darwin'
+        id: elres_mac
+        run: |
+          ELECTRON_VERSION="$(node -p "require('./node_modules/electron/package.json').version")"
+          echo "resolved=${ELECTRON_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Electron headers (resolved) [darwin]
+        if: matrix.platform == 'darwin'
+        uses: actions/cache@v4
+        with:
+          path: |
+            $HOME/.electron-gyp
+            $HOME/.cache/node-gyp
+            $HOME/Library/Caches/node-gyp
+          key: electron-gyp-${{ runner.os }}-${{ steps.elres_mac.outputs.resolved }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            electron-gyp-${{ runner.os }}-${{ steps.elres_mac.outputs.resolved }}-
+            electron-gyp-${{ runner.os }}-
+
+      - name: Cache electron-builder cache (resolved) [darwin]
+        if: matrix.platform == 'darwin'
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.ELECTRON_BUILDER_CACHE }}
+          key: eb-cache-${{ runner.os }}-${{ steps.elres_mac.outputs.resolved }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            eb-cache-${{ runner.os }}-${{ steps.elres_mac.outputs.resolved }}-
+            eb-cache-${{ runner.os }}-
+
+      - name: Build for macOS (native)
+        if: matrix.platform == 'darwin'
+        shell: bash
+        run: |
+          set -euo pipefail
 
           ELECTRON_VERSION=$(node -p "require('./node_modules/electron/package.json').version")
           echo "electron=$ELECTRON_VERSION"
