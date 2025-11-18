@@ -60,7 +60,7 @@
     "@types/events": "^3.0.3",
     "@types/jest": "^30.0.0",
     "@types/lodash.debounce": "^4.0.9",
-    "@types/react": "^19.2.5",
+    "@types/react": "^19.2.6",
     "@types/react-dom": "^19.2.3",
     "@types/w3c-web-usb": "^1.0.13",
     "@typescript-eslint/eslint-plugin": "^8.47.0",
