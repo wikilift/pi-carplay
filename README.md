@@ -13,9 +13,11 @@
 
 # <img src="assets/icons/linux/pi-carplay.png" alt="pi-carplay" width="25px" /> pi-carplay
 
-pi-carplay brings Apple CarPlay and Android Auto to the Raspberry Pi, with support for Linux (ARM/x86) and macOS (ARM) as well. It is a standalone Electron app, optimized for embedded setups and ultra-low-resolution OEM displays.  
+pi-carplay enables **Apple CarPlay and Android Auto on Raspberry Pi**, standard Linux systems (ARM/x86), and **macOS (ARM)** using Carlinkit / AutoBox adapters. 
 
-> **Requirements:** A Carlinkit **CPC200-CCPA** (wireless & wired) or **CPC200-CCPW** (wired only) adapter.
+It is a standalone cross-platform Electron head unit with hardware-accelerated video decoding, low-latency audio, multitouch + D-Pad navigation, and support for very small embedded/OEM displays.
+
+> **Supported adapters:** Carlinkit **CPC200-CCPA** (wireless/wired) and **CPC200-CCPW** (wired)
 
 ## Build Environment
 
@@ -65,10 +67,24 @@ The `setup-pi.sh` script performs the following tasks:
 
 ## Linux (x86_64)
 
-This AppImage has been tested on Debian Trixie (13). No additional software is required — just download the `-x86_64.AppImage` and make it executable. Depending on your distro and how you run the app, you may need a udev rule to access the USB dongle. It presents as a composite (multi-class) USB device, and unlike single-class devices, its interfaces often require explicit permissions. The optional install script can create this rule for you.
+This AppImage has been tested on Debian Trixie (13). No additional software is required — just download the `-x86_64.AppImage` and make it executable. Depending on your distro and how you run the app, you may need a udev rule to access the USB dongle. It presents as a composite (multi-class) USB device, and unlike single-class devices, its interfaces often require explicit permissions.
 
-```udev
-SUBSYSTEM=="usb", ATTR{idVendor}=="1314", ATTR{idProduct}=="152*", MODE="0660", GROUP="plugdev"
+```bash
+sudo bash -c '
+  RULE_FILE="/etc/udev/rules.d/99-pi-carplay.rules"
+  USER_NAME="${SUDO_USER:-$USER}"
+
+  echo "Creating udev rule for Carlinkit dongle (owner: $USER_NAME)"
+  echo "SUBSYSTEM==\"usb\", ATTR{idVendor}==\"1314\", ATTR{idProduct}==\"152*\", " \
+       "MODE=\"0660\", OWNER=\"$USER_NAME\"" \
+    > "$RULE_FILE"
+
+  echo "Reloading udev rules…"
+  udevadm control --reload-rules
+  udevadm trigger
+
+  echo "Done."
+'
 ```
 
 ```bash
