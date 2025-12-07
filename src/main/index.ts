@@ -22,6 +22,7 @@ import https from 'node:https'
 function setFeatureFlags(flags: string[]) {
   app.commandLine.appendSwitch('enable-features', flags.join(','))
 }
+
 function linuxPresetAngleVulkan() {
   app.commandLine.appendSwitch('use-gl', 'angle')
   app.commandLine.appendSwitch('use-angle', 'vulkan')
@@ -29,6 +30,7 @@ function linuxPresetAngleVulkan() {
     'Vulkan',
     'VulkanFromANGLE',
     'DefaultANGLEVulkan',
+    'UnsafeWebGPU',
     'AcceleratedVideoDecodeLinuxZeroCopyGL',
     'AcceleratedVideoEncoder',
     'VaapiIgnoreDriverChecks',
@@ -36,30 +38,27 @@ function linuxPresetAngleVulkan() {
   ])
   app.commandLine.appendSwitch('ozone-platform-hint', 'auto')
 }
-function linuxPresetEglGl() {
-  app.commandLine.appendSwitch('use-gl', 'egl')
-  setFeatureFlags([
-    'AcceleratedVideoDecodeLinuxGL',
-    'AcceleratedVideoDecodeLinuxZeroCopyGL',
-    'AcceleratedVideoEncoder',
-    'UseMultiPlaneFormatForHardwareVideo'
-  ])
-}
+
 function commonGpuToggles() {
   app.commandLine.appendSwitch('ignore-gpu-blocklist')
   app.commandLine.appendSwitch('enable-gpu-rasterization')
   app.commandLine.appendSwitch('disable-features', 'UseChromeOSDirectVideoDecoder')
 }
 
+// Linux x64 -> ANGLE + Vulkan + WebGPU
 if (process.platform === 'linux' && process.arch === 'x64') {
   commonGpuToggles()
   linuxPresetAngleVulkan()
-  if (process.env.HW_DEBUG === 'egl') linuxPresetEglGl()
+  app.commandLine.appendSwitch('enable-unsafe-webgpu')
+  app.commandLine.appendSwitch('enable-dawn-features', 'allow_unsafe_apis')
 }
+
+// macOS: WebGPU
 if (process.platform === 'darwin') {
   app.commandLine.appendSwitch('enable-unsafe-webgpu')
   app.commandLine.appendSwitch('enable-dawn-features', 'allow_unsafe_apis')
 }
+
 app.on('gpu-info-update', () => {
   console.log('GPU Info:', app.getGPUFeatureStatus())
 })
@@ -285,7 +284,6 @@ function downloadWithProgress(
   let cancelled = false
   let _resolve: (() => void) | null = null
   let _reject: ((e: unknown) => void) | null = null
-  // hält ggf. den Cancel des Redirect-Downloads
   let redirectCancel: (() => void) | null = null
 
   const safeResolve = () => {

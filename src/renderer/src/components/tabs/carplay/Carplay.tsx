@@ -6,7 +6,7 @@ import { CommandMapping } from '@main/carplay/messages/common'
 
 import { ExtraConfig } from '@main/Globals'
 import { useCarplayStore, useStatusStore } from '../../../store/store'
-import { InitEvent, Renderer } from '@worker/render/RenderEvents'
+import { InitEvent } from '@worker/render/RenderEvents'
 import type { CarPlayWorker, UsbEvent, KeyCommand, WorkerToUI } from '@worker/types'
 import { useCarplayMultiTouch } from './hooks/useCarplayTouch'
 
@@ -25,7 +25,7 @@ interface CarplayProps {
   commandCounter: number
 }
 
-/* ----------------------------- Overlay visuals ----------------------------- */
+// Overlay visuals
 
 const spin = keyframes`to { transform: rotate(360deg); }`
 const pulse = keyframes`
@@ -180,7 +180,7 @@ function StatusOverlay({
   )
 }
 
-/* --------------------------------- Carplay -------------------------------- */
+// Carplay
 
 const CarplayComponent: React.FC<CarplayProps> = ({
   receivingVideo,
@@ -246,10 +246,7 @@ const CarplayComponent: React.FC<CarplayProps> = ({
   const offscreenCanvasRef = useRef<OffscreenCanvas | null>(null)
 
   // Render settings
-  const preferredRenderer = 'auto' // 'auto' | 'webgl2' | 'webgl' | 'webgpu'
   const reportFps = false
-  const useHardware = true
-  const useWebRTC = true
 
   // Keep settings in ref
   const configRef = useRef(settings)
@@ -298,17 +295,10 @@ const CarplayComponent: React.FC<CarplayProps> = ({
         type: 'module'
       })
       renderWorkerRef.current = w
-      w.postMessage(
-        new InitEvent(
-          offscreenCanvasRef.current,
-          videoChannel.port2,
-          preferredRenderer as Renderer,
-          reportFps,
-          useHardware,
-          useWebRTC
-        ),
-        [offscreenCanvasRef.current, videoChannel.port2]
-      )
+      w.postMessage(new InitEvent(offscreenCanvasRef.current, videoChannel.port2, reportFps), [
+        offscreenCanvasRef.current,
+        videoChannel.port2
+      ])
     }
     // Cleanup when canvas is unmounted
     return () => {
@@ -316,7 +306,7 @@ const CarplayComponent: React.FC<CarplayProps> = ({
       renderWorkerRef.current = null
       offscreenCanvasRef.current = null
     }
-  }, [videoChannel, preferredRenderer, reportFps, useHardware, useWebRTC])
+  }, [videoChannel, reportFps])
 
   useEffect(() => {
     if (!renderWorkerRef.current) return
