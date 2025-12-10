@@ -1,4 +1,4 @@
-export type WorkerEventType = 'init' | 'frame' | 'renderDone'
+export type WorkerEventType = 'init' | 'frame' | 'renderDone' | 'updateFps'
 
 export interface WorkerEvent {
   type: WorkerEventType
@@ -16,6 +16,12 @@ export class InitEvent implements WorkerEvent {
   constructor(
     public canvas: OffscreenCanvas,
     public videoPort: MessagePort,
-    public reportFps: boolean = false
+    public targetFps: number
   ) {}
+}
+
+export class UpdateFpsEvent implements WorkerEvent {
+  type: WorkerEventType = 'updateFps'
+
+  constructor(public fps: number) {}
 }

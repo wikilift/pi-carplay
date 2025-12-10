@@ -145,10 +145,17 @@ app.on('before-quit', async (e) => {
   if (isQuitting) return
   isQuitting = true
   e.preventDefault()
+
   try {
     carplayService['shuttingDown'] = true
     await carplayService.stop()
-    await usbService['forceReset']?.()
+
+    if (process.platform === 'darwin') {
+      await usbService.gracefulForceReset()
+    } else {
+      await usbService.forceReset()
+    }
+
     await usbService.stop()
   } catch (err) {
     console.warn('Error while quitting:', err)

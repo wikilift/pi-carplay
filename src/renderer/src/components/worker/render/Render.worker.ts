@@ -1,5 +1,5 @@
 import { getDecoderConfig, getNaluFromStream, isKeyFrame, NaluTypes } from './lib/utils'
-import { InitEvent, WorkerEvent } from './RenderEvents'
+import { InitEvent, WorkerEvent, UpdateFpsEvent } from './RenderEvents'
 import { WebGL2Renderer } from './WebGL2Renderer'
 import { WebGPURenderer } from './WebGPURenderer'
 
@@ -14,9 +14,6 @@ export class RendererWorker {
   private renderer: FrameRenderer | null = null
   private videoPort: MessagePort | null = null
   private pendingFrame: VideoFrame | null = null
-  private startTime: number | null = null
-  private frameCount = 0
-  private fps = 0
   private decoder: VideoDecoder
   private isConfigured = false
   private lastSPS: Uint8Array | null = null
@@ -25,7 +22,8 @@ export class RendererWorker {
   private selectedRenderer: string | null = null
   private renderScheduled = false
   private lastRenderTime: number = 0
-  private frameInterval: number = 1000 / 60 // 60Hz
+  private targetFps = 60
+  private frameInterval: number = 1000 / this.targetFps
 
   private rendererHwSupported = false
   private rendererSwSupported = false
@@ -37,14 +35,19 @@ export class RendererWorker {
     })
   }
 
-  private onVideoDecoderOutput = (frame: VideoFrame) => {
-    if (this.startTime == null) {
-      this.startTime = performance.now()
-    } else {
-      const elapsed = (performance.now() - this.startTime) / 1000
-      this.fps = ++this.frameCount / elapsed
-    }
+  private setTargetFps(fps?: number) {
+    if (!fps || !Number.isFinite(fps)) return
 
+    this.targetFps = fps
+    this.frameInterval = 1000 / fps
+    console.debug('[RENDER.WORKER] Using target FPS:', fps)
+  }
+
+  updateTargetFps(fps?: number) {
+    this.setTargetFps(fps)
+  }
+
+  private onVideoDecoderOutput = (frame: VideoFrame) => {
     this.renderFrame(frame)
   }
 
@@ -62,7 +65,7 @@ export class RendererWorker {
     this.renderScheduled = false
 
     const now = performance.now()
-    if (now - this.lastRenderTime < this.frameInterval * 0.75) {
+    if (now - this.lastRenderTime < this.frameInterval) {
       requestAnimationFrame(this.renderAnimationFrame)
       return
     }
@@ -85,16 +88,10 @@ export class RendererWorker {
     }
     this.videoPort.start()
 
+    this.setTargetFps(event.targetFps)
+
     self.postMessage({ type: 'render-ready' })
     console.debug('[RENDER.WORKER] render-ready')
-
-    if (event.reportFps) {
-      setInterval(() => {
-        if (this.decoder.state === 'configured') {
-          console.debug(`[RENDER.WORKER] FPS: ${this.fps.toFixed(2)}`)
-        }
-      }, 5000)
-    }
 
     await this.evaluateRendererCapabilities()
 
@@ -303,8 +300,19 @@ export class RendererWorker {
 
 const worker = new RendererWorker()
 scope.addEventListener('message', (event: MessageEvent<WorkerEvent>) => {
-  if (event.data.type === 'init') {
-    worker.init(event.data as InitEvent)
+  const msg = event.data
+
+  switch (msg.type) {
+    case 'init':
+      worker.init(msg as InitEvent)
+      break
+
+    case 'updateFps':
+      worker.updateTargetFps((msg as UpdateFpsEvent).fps)
+      break
+
+    default:
+      break
   }
 })
 

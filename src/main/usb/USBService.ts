@@ -209,7 +209,7 @@ export class USBService {
     BrowserWindow.getAllWindows().forEach((win) => win.webContents.send(type, ok))
   }
 
-  private async forceReset(): Promise<boolean> {
+  public async forceReset(): Promise<boolean> {
     this.notifyReset('usb-reset-start', true)
     const dongle = findDongle()
     if (dongle) {
@@ -225,7 +225,7 @@ export class USBService {
     return this.resetDongle(dongle)
   }
 
-  private async gracefulForceReset(): Promise<boolean> {
+  public async gracefulForceReset(): Promise<boolean> {
     this.notifyReset('usb-reset-start', true)
     const dongle = findDongle()
     if (!dongle) {

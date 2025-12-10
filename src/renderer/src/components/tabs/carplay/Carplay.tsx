@@ -6,7 +6,7 @@ import { CommandMapping } from '@main/carplay/messages/common'
 
 import { ExtraConfig } from '@main/Globals'
 import { useCarplayStore, useStatusStore } from '../../../store/store'
-import { InitEvent } from '@worker/render/RenderEvents'
+import { InitEvent, UpdateFpsEvent } from '@worker/render/RenderEvents'
 import type { CarPlayWorker, UsbEvent, KeyCommand, WorkerToUI } from '@worker/types'
 import { useCarplayMultiTouch } from './hooks/useCarplayTouch'
 
@@ -239,20 +239,13 @@ const CarplayComponent: React.FC<CarplayProps> = ({
 
   // MediaPlayStatus handling
   const mediaPlayStatusRef = useRef<number | undefined>(undefined)
-  const audioCommandRef = useRef<number | undefined>(undefined)
 
   // Render worker + OffscreenCanvas
   const renderWorkerRef = useRef<Worker | null>(null)
   const offscreenCanvasRef = useRef<OffscreenCanvas | null>(null)
 
-  // Render settings
-  const reportFps = false
-
-  // Keep settings in ref
-  const configRef = useRef(settings)
-  useEffect(() => {
-    configRef.current = settings
-  }, [settings])
+  // keep initial FPS for worker init
+  const initialFpsRef = useRef(settings.fps)
 
   // Visual delay for FFT so spectrum matches audio playback
   const fftVisualDelayMs = 0
@@ -295,7 +288,10 @@ const CarplayComponent: React.FC<CarplayProps> = ({
         type: 'module'
       })
       renderWorkerRef.current = w
-      w.postMessage(new InitEvent(offscreenCanvasRef.current, videoChannel.port2, reportFps), [
+
+      const targetFps = initialFpsRef.current
+
+      w.postMessage(new InitEvent(offscreenCanvasRef.current, videoChannel.port2, targetFps), [
         offscreenCanvasRef.current,
         videoChannel.port2
       ])
@@ -306,7 +302,12 @@ const CarplayComponent: React.FC<CarplayProps> = ({
       renderWorkerRef.current = null
       offscreenCanvasRef.current = null
     }
-  }, [videoChannel, reportFps])
+  }, [videoChannel])
+
+  useEffect(() => {
+    if (!renderWorkerRef.current) return
+    renderWorkerRef.current.postMessage(new UpdateFpsEvent(settings.fps))
+  }, [settings.fps])
 
   useEffect(() => {
     if (!renderWorkerRef.current) return
@@ -573,7 +574,6 @@ const CarplayComponent: React.FC<CarplayProps> = ({
           const prevStatus = mediaPlayStatusRef.current
           if (typeof playStatus === 'number' && playStatus !== prevStatus) {
             mediaPlayStatusRef.current = playStatus
-            audioCommandRef.current = playStatus
           }
           break
         }
@@ -634,7 +634,7 @@ const CarplayComponent: React.FC<CarplayProps> = ({
     }
   }, [carplayWorker])
 
-  /* ---------------------- Force-hide video when not streaming --------------- */
+  // Force-hide video when not streaming
   useEffect(() => {
     if (!isStreaming) {
       setReceivingVideo(false)
