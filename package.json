@@ -1,7 +1,7 @@
 {
   "name": "pi-carplay",
   "version": "4.2.0",
-  "description": "An Electron application with React and TypeScript",
+  "description": "CarPlay/Android Auto head unit app for Linux",
   "main": "./out/main/main.js",
   "author": "Lasse Heitgres",
   "contributors": [
