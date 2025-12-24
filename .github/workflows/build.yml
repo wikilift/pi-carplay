@@ -278,6 +278,7 @@ jobs:
         if: matrix.platform == 'x86_64' && (env.BUILD_BRANCH == 'main' || env.BUILD_BRANCH == 'dev')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
         run: |
           set -euo pipefail
 
@@ -285,34 +286,105 @@ jobs:
           VERSION="${{ steps.pkg.outputs.version }}"
           NODE_VERSION="${{ steps.rt.outputs.node }}"
           NPM_VERSION="${{ steps.rt.outputs.npm }}"
-          ELECTRON_SEMVER="$(node -e "try{console.log(require('./node_modules/electron/package.json').version)}catch(e){try{console.log(require('./package.json').devDependencies.electron)}catch(e){console.log('unknown')}}" )"
 
-          # Chromium version: try electron-to-chromium, then fallback to Electron binary
+          # Prefer installed Electron version (node_modules), fallback to package.json semver
+          ELECTRON_SEMVER="$(node -e "try{console.log(require('./node_modules/electron/package.json').version)}catch(e){try{console.log(require('./package.json').devDependencies.electron)}catch(e){console.log('unknown')}}" )"
+          export ELECTRON_SEMVER
+
+          echo "BRANCH_NAME=${BRANCH_NAME}"
+          echo "VERSION=${VERSION}"
+          echo "NODE_VERSION=${NODE_VERSION}"
+          echo "NPM_VERSION=${NPM_VERSION}"
+          echo "ELECTRON_SEMVER=${ELECTRON_SEMVER}"
+
+          echo "==> Debug: electron-to-chromium package & mappings"
+          node -e "
+          try {
+            const pkg = require('electron-to-chromium/package.json');
+            const { electronToChromium } = require('electron-to-chromium');
+
+            const v = (process.env.ELECTRON_SEMVER || '').trim();
+            const clean = v.replace(/^v/i,'').split('-')[0];
+            const parts = clean.split('.');
+            const candidates = [clean, parts.slice(0,2).join('.'), parts[0]].filter(Boolean);
+
+            console.log('electron-to-chromium=', pkg.version);
+            console.log('electron(clean)=', clean);
+            for (const c of candidates) {
+              console.log('  map(' + c + ')=', electronToChromium(c));
+            }
+          } catch (e) {
+            console.log('electron-to-chromium load failed:', e?.message || e);
+          }
+          "
+
+          # Chromium version: try electron-to-chromium with patch->minor->major fallback
           CHROMIUM_VER="$(node -e "
-            try {
-              const { electronToChromium } = require('electron-to-chromium');
-              const v = '${ELECTRON_SEMVER}'.trim();
-              if (!v || v === 'unknown') { console.log('unknown'); process.exit(0); }
-              const clean = v.replace(/^v/i,'').split('-')[0];
-              const mapped = electronToChromium(clean);
-              console.log(mapped ? String(mapped) : 'unknown');
-            } catch { console.log('unknown'); }
+          try {
+            const { electronToChromium } = require('electron-to-chromium');
+            const v = (process.env.ELECTRON_SEMVER || '').trim();
+            if (!v || v === 'unknown') { console.log('unknown'); process.exit(0); }
+
+            const clean = v.replace(/^v/i,'').split('-')[0];
+            const parts = clean.split('.');
+            const candidates = [
+              clean,                         // X.X.X
+              parts.slice(0,2).join('.'),    // X.X
+              parts[0],                      // X
+            ].filter(Boolean);
+
+            for (const c of candidates) {
+              const mapped = electronToChromium(c);
+              if (mapped) { console.log(String(mapped).trim()); process.exit(0); }
+            }
+            console.log('unknown');
+          } catch { console.log('unknown'); }
           ")"
 
+          echo "Chromium (electron-to-chromium)=${CHROMIUM_VER}"
+
+          # If still unknown, try npx with latest mapping dataset (no repo changes required)
           if [ "$CHROMIUM_VER" = "unknown" ] || [ -z "$CHROMIUM_VER" ]; then
+            echo "Chromium mapping failed, trying npx electron-to-chromium@latest…"
+            CHROMIUM_VER="$(node -e "
+            const { execSync } = require('child_process');
+            const v = (process.env.ELECTRON_SEMVER || '').trim();
+            const clean = v.replace(/^v/i,'').split('-')[0];
+            const major = clean.split('.')[0];
+            try {
+              // Prefer major mapping to keep it stable
+              const out = execSync('npx -y electron-to-chromium@latest --electron ' + major, { stdio:['ignore','pipe','ignore'] }).toString().trim();
+              console.log(out || 'unknown');
+            } catch {
+              console.log('unknown');
+            }
+            ")"
+            echo "Chromium (npx electron-to-chromium@latest)=${CHROMIUM_VER}"
+          fi
+
+          # Optional fallback: try Electron binary (usually unavailable with --ignore-scripts)
+          if [ "$CHROMIUM_VER" = "unknown" ] || [ -z "$CHROMIUM_VER" ]; then
+            echo "Chromium mapping still unknown, trying Electron binary…"
             ELECTRON_BIN="$(node -e "try{console.log(require('electron'))}catch{process.exit(1)}" 2>/dev/null || true)"
+            echo "Electron binary=${ELECTRON_BIN:-<not found>}"
+
             if [ -n "$ELECTRON_BIN" ] && [ -x "$ELECTRON_BIN" ]; then
               CHROMIUM_FROM_BIN="$(ELECTRON_RUN_AS_NODE=1 "$ELECTRON_BIN" -e "console.log(process.versions.chrome||'')" 2>/dev/null || true)"
+              echo "Chromium from Electron binary=${CHROMIUM_FROM_BIN:-<empty>}"
               if [ -n "$CHROMIUM_FROM_BIN" ]; then
                 CHROMIUM_VER="$CHROMIUM_FROM_BIN"
               fi
+            else
+              echo "Electron binary not executable or not found."
             fi
           fi
+
+          echo "Chromium version used for badge=${CHROMIUM_VER}"
 
           # Electron release date (de-DE, Europe/Berlin)
           ELECTRON_DATE_DE="$(node -e "
             const cp = require('child_process');
-            const v = '${ELECTRON_SEMVER}'.trim().replace(/^v/i,'');
+            const v = (process.env.ELECTRON_SEMVER || '').trim().replace(/^v/i,'');
             try {
               const out = cp.execSync('npm view electron@'+v+' time --json',{stdio:['ignore','pipe','ignore']}).toString();
               const map = JSON.parse(out)||{};
@@ -324,6 +396,8 @@ jobs:
               ).format(d));
             } catch { console.log('unknown'); }
           ")"
+
+          echo "Electron release date (de-DE)=${ELECTRON_DATE_DE}"
 
           mkdir temp-badges
           cd temp-badges
